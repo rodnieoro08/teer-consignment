@@ -1,0 +1,84 @@
+const CATALOG = [
+  { sku: "CDS0802-NT",  family: "MitraClip G5", kind: "CDS", size: "NT",  label: "G5 NT Clip Delivery System" },
+  { sku: "CDS0802-NTW", family: "MitraClip G5", kind: "CDS", size: "NTW", label: "G5 NTW Clip Delivery System" },
+  { sku: "CDS0802-XT",  family: "MitraClip G5", kind: "CDS", size: "XT",  label: "G5 XT Clip Delivery System" },
+  { sku: "CDS0802-XTW", family: "MitraClip G5", kind: "CDS", size: "XTW", label: "G5 XTW Clip Delivery System" },
+  { sku: "SGC0802",     family: "MitraClip G5", kind: "SGC", size: "SGC", label: "G5 Steerable Guide Catheter" },
+  { sku: "MC0802-NT",   family: "MitraClip G5", kind: "BUNDLE", size: "NT",  label: "G5 NT bundle (CDS + SGC)" },
+  { sku: "MC0802-NTW",  family: "MitraClip G5", kind: "BUNDLE", size: "NTW", label: "G5 NTW bundle (CDS + SGC)" },
+  { sku: "MC0802-XT",   family: "MitraClip G5", kind: "BUNDLE", size: "XT",  label: "G5 XT bundle (CDS + SGC)" },
+  { sku: "MC0802-XTW",  family: "MitraClip G5", kind: "BUNDLE", size: "XTW", label: "G5 XTW bundle (CDS + SGC)" },
+  { sku: "CDS0707-NT",  family: "MitraClip G4", kind: "CDS", size: "NT",  label: "G4 NT Clip Delivery System" },
+  { sku: "CDS0707-NTW", family: "MitraClip G4", kind: "CDS", size: "NTW", label: "G4 NTW Clip Delivery System" },
+  { sku: "CDS0707-XT",  family: "MitraClip G4", kind: "CDS", size: "XT",  label: "G4 XT Clip Delivery System" },
+  { sku: "CDS0707-XTW", family: "MitraClip G4", kind: "CDS", size: "XTW", label: "G4 XTW Clip Delivery System" },
+  { sku: "SGC0707",     family: "MitraClip G4", kind: "SGC", size: "SGC", label: "G4 Steerable Guide Catheter" },
+  { sku: "MC0707-NT",   family: "MitraClip G4", kind: "BUNDLE", size: "NT",  label: "G4 NT bundle (CDS + SGC)" },
+  { sku: "MC0707-NTW",  family: "MitraClip G4", kind: "BUNDLE", size: "NTW", label: "G4 NTW bundle (CDS + SGC)" },
+  { sku: "MC0707-XT",   family: "MitraClip G4", kind: "BUNDLE", size: "XT",  label: "G4 XT bundle (CDS + SGC)" },
+  { sku: "MC0707-XTW",  family: "MitraClip G4", kind: "BUNDLE", size: "XTW", label: "G4 XTW bundle (CDS + SGC)" },
+  { sku: "SZR07ST", family: "Accessory", kind: "ACC", size: "ACC", label: "Stabilizer" },
+  { sku: "LFT07ST", family: "Accessory", kind: "ACC", size: "ACC", label: "Lift" },
+  { sku: "PLT07ST", family: "Accessory", kind: "ACC", size: "ACC", label: "Support plate" }
+];
+
+const HOSPITALS = [
+  { id: "barts", name: "St Bartholomew's (Barts)", city: "London", region: "London" },
+  { id: "brompton", name: "Royal Brompton", city: "London", region: "London" },
+  { id: "harefield", name: "Harefield", city: "London", region: "London" },
+  { id: "hammersmith", name: "Hammersmith", city: "London", region: "London" },
+  { id: "kings", name: "King's College Hospital", city: "London", region: "London" },
+  { id: "stthomas", name: "St Thomas'", city: "London", region: "London" },
+  { id: "brighton", name: "Royal Sussex, Brighton", city: "Brighton", region: "South East" },
+  { id: "oxford", name: "John Radcliffe, Oxford", city: "Oxford", region: "South East" },
+  { id: "southampton", name: "Southampton General", city: "Southampton", region: "South East" },
+  { id: "bristol", name: "Bristol Royal Infirmary", city: "Bristol", region: "South West" },
+  { id: "papworth", name: "Royal Papworth", city: "Cambridge", region: "East" },
+  { id: "basildon", name: "Basildon", city: "Basildon", region: "East" },
+  { id: "qehb", name: "QE Birmingham", city: "Birmingham", region: "Midlands" },
+  { id: "glenfield", name: "Glenfield, Leicester", city: "Leicester", region: "Midlands" },
+  { id: "stoke", name: "Royal Stoke", city: "Stoke", region: "Midlands" },
+  { id: "wolves", name: "New Cross, Wolverhampton", city: "Wolverhampton", region: "Midlands" },
+  { id: "nottingham", name: "Nottingham", city: "Nottingham", region: "Midlands" },
+  { id: "wythenshawe", name: "Wythenshawe, Manchester", city: "Manchester", region: "North West" },
+  { id: "lhch", name: "Liverpool Heart & Chest", city: "Liverpool", region: "North West" },
+  { id: "leeds", name: "Leeds General Infirmary", city: "Leeds", region: "Yorkshire & NE" },
+  { id: "jamescook", name: "James Cook, Middlesbrough", city: "Middlesbrough", region: "Yorkshire & NE" },
+  { id: "freeman", name: "Freeman, Newcastle", city: "Newcastle", region: "Yorkshire & NE" },
+  { id: "glasgow", name: "Golden Jubilee, Glasgow", city: "Glasgow", region: "Scotland" },
+  { id: "edinburgh", name: "Royal Infirmary Edinburgh", city: "Edinburgh", region: "Scotland" },
+  { id: "cardiff", name: "University Hospital Cardiff", city: "Cardiff", region: "Wales" },
+  { id: "belfast", name: "Royal Victoria, Belfast", city: "Belfast", region: "Northern Ireland" }
+];
+
+function demoUnits() {
+  const add = (hospitalId, sku, serial, expiry, status = "in-stock") => ({
+    id: crypto.randomUUID(),
+    hospitalId, sku, serial, lot: serial.slice(0, 6),
+    expiry, status, notes: "",
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
+  });
+  return [
+    add("barts", "CDS0802-XTW", "G5XTW10001", "2027-03-15"),
+    add("barts", "CDS0802-XTW", "G5XTW10002", "2027-03-15"),
+    add("barts", "CDS0802-NTW", "G5NTW10011", "2026-12-01"),
+    add("barts", "CDS0802-NT",  "G5NT010021", "2027-01-20"),
+    add("barts", "SGC0802",     "G5SGC10031", "2027-06-10"),
+    add("barts", "SGC0802",     "G5SGC10032", "2027-06-10"),
+    add("papworth", "CDS0802-XTW", "G5XTW20001", "2027-02-08"),
+    add("papworth", "CDS0802-XT",  "G5XT020011", "2026-11-12"),
+    add("papworth", "SGC0802",     "G5SGC20021", "2027-04-01"),
+    add("wythenshawe", "CDS0802-NTW", "G5NTW30001", "2027-05-22"),
+    add("wythenshawe", "CDS0802-XTW", "G5XTW30002", "2027-05-22"),
+    add("wythenshawe", "SGC0802", "G5SGC30011", "2027-08-14"),
+    add("leeds", "CDS0707-XTW", "G4XTW40001", "2026-10-30"),
+    add("leeds", "CDS0707-NTW", "G4NTW40011", "2026-09-18"),
+    add("leeds", "SGC0707", "G4SGC40021", "2027-01-05"),
+    add("stthomas", "CDS0802-XTW", "G5XTW50001", "2027-07-01"),
+    add("oxford", "CDS0802-NT", "G5NT060011", "2027-03-03"),
+    add("oxford", "SGC0802", "G5SGC60021", "2027-03-03"),
+    add("qehb", "CDS0802-XTW", "G5XTW70001", "2026-10-02"),
+    add("lhch", "CDS0802-NTW", "G5NTW80001", "2027-02-14")
+  ];
+}
