@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="theme-color" content="#071422" />
+  <title>TEER Consignment</title>
+  <link rel="manifest" href="./manifest.json" />
+  <link rel="stylesheet" href="./styles.css" />
+  <link rel="apple-touch-icon" href="./icon.svg" />
+  <style>
+    .flag-line { font-size: 13px; padding: 8px 0; border-bottom: 1px solid var(--line); color: #d7e6f2; }
+    .flag-line:last-child { border-bottom: 0; }
+  </style>
+</head>
+<body>
+  <header class="app-header">
+    <div class="brand">
+      <div class="logo">TC</div>
+      <div>
+        <h1>TEER Consignment</h1>
+        <div class="sub">UK hospital stock · <span id="who-label">UK TEER team</span></div>
+      </div>
+    </div>
+    <div class="badge-row">
+      <span class="pill">Not official Abbott software</span>
+      <span class="pill warn">Do not commit real serials</span>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <section id="screen-home" class="screen active">
+      <div class="grid-4">
+        <div class="kpi ok"><div class="n" id="k-units">0</div><div class="l">In stock</div></div>
+        <div class="kpi"><div class="n" id="k-sites">0</div><div class="l">Hospitals</div></div>
+        <div class="kpi warn"><div class="n" id="k-exp">0</div><div class="l"><90d</div></div>
+        <div class="kpi bad"><div class="n" id="k-hot">0</div><div class="l"><30d</div></div>
+      </div>
+
+      <div class="card" style="margin-top:12px">
+        <h2>Need a clip fast</h2>
+        <p class="hint">Search every hospital from one box. Demo data is loaded so you can try XTW now.</p>
+        <button class="primary" type="button" onclick="document.getElementById('find-q').value='XTW';showScreen('find');renderFind()">Find XTW across the UK</button>
+        <button class="secondary" type="button" onclick="showScreen('scan')">Scan a box</button>
+      </div>
+
+      <div class="card">
+        <h2>National clip matrix</h2>
+        <p class="hint">In-stock units only. Red zero = nothing on the shelf in this app.</p>
+        <div style="overflow:auto">
+          <table class="matrix">
+            <thead>
+              <tr><th>Hospital</th><th>NT</th><th>NTW</th><th>XT</th><th>XTW</th><th>SGC</th></tr>
+            </thead>
+            <tbody id="matrix-body"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Gaps & expiry</h2>
+        <div id="alerts"></div>
+      </div>
+
+      <div class="card">
+        <h2>Activity</h2>
+        <div id="activity"></div>
+      </div>
+    </section>
+
+    <section id="screen-find" class="screen">
+      <div class="card">
+        <h2>Find stock</h2>
+        <p class="hint">Type XTW, SGC, a hospital, or a serial. This is the screen to use on the way to a case.</p>
+        <div class="field"><label>Search</label><input id="find-q" placeholder="XTW / Barts / serial"></div>
+        <div class="grid-2" style="margin-top:8px">
+          <div class="field">
+            <label>Size</label>
+            <select id="find-size">
+              <option value="">Any</option>
+              <option>NT</option><option>NTW</option><option>XT</option><option>XTW</option><option>SGC</option><option>ACC</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>Status</label>
+            <select id="find-status">
+              <option value="in-stock">In stock</option>
+              <option value="">All</option>
+              <option value="used">Used</option>
+            </select>
+          </div>
+        </div>
+      </div>
+      <div class="card" id="find-results"></div>
+    </section>
+
+    <section id="screen-scan" class="screen">
+      <div class="card">
+        <h2>Scan or type</h2>
+        <p class="hint">Point the camera at the UDI / Code 128 on the pouch. If the camera fails, type the serial — that is still faster than the Excel sheet.</p>
+        <div id="reader" style="display:none;margin-bottom:10px"></div>
+        <button class="primary" id="btn-cam" type="button">Open camera</button>
+        <button class="secondary" id="btn-cam-stop" type="button">Stop camera</button>
+        <label class="file-btn" style="margin-top:8px">Read barcode from photo
+          <input id="scan-photo" type="file" accept="image/*" capture="environment">
+        </label>
+      </div>
+      <div class="card">
+        <h2>Unit</h2>
+        <div class="grid-2">
+          <div class="field span2"><label>Serial</label><input id="scan-sn" placeholder="SN / (21)"></div>
+          <div class="field span2"><label>SKU / REF</label><select id="scan-sku"></select></div>
+          <div class="field span2"><label>Hospital</label><select id="scan-hosp"></select></div>
+          <div class="field"><label>Expiry</label><input id="scan-exp" type="date"></div>
+          <div class="field"><label>Lot</label><input id="scan-lot" placeholder="LOT / (10)"></div>
+          <div class="field span2"><label>Paste UDI string</label><input id="scan-raw-in" placeholder="(01)…(17)…(21)…"></div>
+        </div>
+        <div class="tiny" id="scan-raw" style="margin:8px 0"></div>
+        <button class="primary" id="btn-add" type="button">Add / update consignment</button>
+      </div>
+    </section>
+
+    <section id="screen-hospitals" class="screen">
+      <div class="card">
+        <h2>Hospitals</h2>
+        <div class="field"><label>Filter</label><input id="hosp-q" placeholder="Barts / Leeds / Wales"></div>
+        <div class="grid-2" style="margin-top:10px">
+          <div class="field"><label>Add hospital</label><input id="new-hosp" placeholder="Name"></div>
+          <div class="field"><label>City</label><input id="new-city" placeholder="City"></div>
+        </div>
+        <button class="secondary" id="btn-add-hosp" type="button">Add hospital</button>
+      </div>
+      <div id="hosp-list"></div>
+    </section>
+
+    <section id="screen-team" class="screen">
+      <div class="card">
+        <h2>You</h2>
+        <div class="field"><label>Name / initials</label><input id="who" placeholder="e.g. RO"></div>
+        <p class="hint">Shown on this phone only. Colleagues keep their own name after they import a snapshot.</p>
+      </div>
+      <div class="card">
+        <h2>Share with colleagues</h2>
+        <p class="hint">There is no Abbott stock app behind this yet. The practical team workflow:</p>
+        <ol class="hint" style="padding-left:18px">
+          <li>One person keeps the live file (usually you).</li>
+          <li>Export JSON after a stock check or case.</li>
+          <li>Drop it in the team Teams / WhatsApp folder.</li>
+          <li>Everyone else taps Import and the serials merge by serial number.</li>
+        </ol>
+        <button class="primary" id="btn-export-json" type="button">Export JSON snapshot</button>
+        <button class="secondary" id="btn-export-csv" type="button">Export CSV (Excel)</button>
+        <label class="file-btn" style="margin-top:10px">Import JSON or CSV
+          <input id="import-file" type="file" accept=".json,.csv,text/csv,application/json">
+        </label>
+      </div>
+      <div class="card">
+        <h2>Optional live URL</h2>
+        <p class="hint">If you host the same JSON on a private gist raw URL, SharePoint anonymous link, or JSONBin, everyone can tap Pull.</p>
+        <div class="field"><label>Snapshot URL</label><input id="cloud-url" placeholder="https://…"></div>
+        <button class="secondary" id="btn-cloud" type="button">Pull team snapshot</button>
+      </div>
+      <div class="card">
+        <h2>This phone</h2>
+        <button class="secondary" id="btn-demo" type="button">Reload demo stock</button>
+        <button class="danger" id="btn-wipe" type="button">Clear local stock</button>
+        <p class="disclaimer">Personal / team operations helper. Not CE or UKCA marked. Not an Abbott inventory system of record. Do not put patient names in notes. Do not commit live serials to GitHub.</p>
+      </div>
+    </section>
+  </main>
+
+  <nav class="nav">
+    <button type="button" class="active" data-screen="home">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 10.5 12 4l8 6.5V20a1 1 0 0 1-1 1h-5v-6H10v6H5a1 1 0 0 1-1-1z"/></svg>
+      Home
+    </button>
+    <button type="button" data-screen="find">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+      Find
+    </button>
+    <button type="button" data-screen="scan">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 7V4h3M20 7V4h-3M4 17v3h3M20 17v3h-3"/><path d="M7 12h10"/></svg>
+      Scan
+    </button>
+    <button type="button" data-screen="hospitals">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 21h18M6 21V8l6-4 6 4v13M10 21v-6h4v6"/></svg>
+      Sites
+    </button>
+    <button type="button" data-screen="team">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v2"/><circle cx="9" cy="8" r="3"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+      Team
+    </button>
+  </nav>
+
+  <div class="toast" id="toast"></div>
+  <div class="modal-bg" id="modal"><div class="modal" id="modal-body"></div></div>
+
+  <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+  <script src="./data.js"></script>
+  <script src="./app.js"></script>
+</body>
+</html>
