@@ -25,8 +25,8 @@
       </div>
     </div>
     <div class="badge-row">
+      <span class="pill warn" id="live-pill">This phone only</span>
       <span class="pill">Not official Abbott software</span>
-      <span class="pill warn">Do not commit real serials</span>
     </div>
   </header>
 
@@ -41,7 +41,7 @@
 
       <div class="card" style="margin-top:12px">
         <h2>Need a clip fast</h2>
-        <p class="hint">Search every hospital from one box. Demo data is loaded so you can try XTW now.</p>
+        <p class="hint">Search every hospital from one box. After the team signs in, this is the live national list.</p>
         <button class="primary" type="button" onclick="document.getElementById('find-q').value='XTW';showScreen('find');renderFind()">Find XTW across the UK</button>
         <button class="secondary" type="button" onclick="showScreen('scan')">Scan a box</button>
       </div>
@@ -99,7 +99,7 @@
     <section id="screen-scan" class="screen">
       <div class="card">
         <h2>Scan or type</h2>
-        <p class="hint">Point the camera at the UDI / Code 128 on the pouch. If the camera fails, type the serial — that is still faster than the Excel sheet.</p>
+        <p class="hint">Point the camera at the UDI / Code 128 on the pouch. If the camera fails, type the serial.</p>
         <div id="reader" style="display:none;margin-bottom:10px"></div>
         <button class="primary" id="btn-cam" type="button">Open camera</button>
         <button class="secondary" id="btn-cam-stop" type="button">Stop camera</button>
@@ -137,36 +137,53 @@
 
     <section id="screen-team" class="screen">
       <div class="card">
-        <h2>You</h2>
-        <div class="field"><label>Name / initials</label><input id="who" placeholder="e.g. RO"></div>
-        <p class="hint">Shown on this phone only. Colleagues keep their own name after they import a snapshot.</p>
+        <h2>Live team</h2>
+        <p class="hint" id="live-status">Not live yet.</p>
+        <div class="tiny">Signed in as <span id="signed-as">Not signed in</span></div>
+        <div id="live-people" style="margin-top:8px"></div>
       </div>
+
       <div class="card">
-        <h2>Share with colleagues</h2>
-        <p class="hint">There is no Abbott stock app behind this yet. The practical team workflow:</p>
-        <ol class="hint" style="padding-left:18px">
-          <li>One person keeps the live file (usually you).</li>
-          <li>Export JSON after a stock check or case.</li>
-          <li>Drop it in the team Teams / WhatsApp folder.</li>
-          <li>Everyone else taps Import and the serials merge by serial number.</li>
-        </ol>
-        <button class="primary" id="btn-export-json" type="button">Export JSON snapshot</button>
+        <h2>You</h2>
+        <div class="field"><label>Name / initials shown on edits</label><input id="who" placeholder="e.g. RO"></div>
+      </div>
+
+      <div class="card">
+        <h2>1. Firebase config · once per phone</h2>
+        <p class="hint">Create a private Firebase project (steps in the README). Paste the web config object here. It stays on this phone — do not commit it to GitHub.</p>
+        <div class="field"><label>firebaseConfig</label>
+          <textarea id="fb-json" placeholder='{ "apiKey": "...", "authDomain": "...", "projectId": "..." }'></textarea>
+        </div>
+        <button class="primary" id="btn-save-fb" type="button">Save config on this phone</button>
+      </div>
+
+      <div class="card">
+        <h2>2. Sign in</h2>
+        <p class="hint">Each specialist uses their own email. Create accounts only for the UK TEER team.</p>
+        <div class="field"><label>Email</label><input id="fb-email" type="email" placeholder="you@abbott.com" autocomplete="username"></div>
+        <div class="field" style="margin-top:8px"><label>Password</label><input id="fb-pass" type="password" autocomplete="current-password"></div>
+        <button class="primary" id="btn-signin" type="button">Sign in</button>
+        <button class="secondary" id="btn-signup" type="button">Create team account</button>
+        <button class="secondary" id="btn-google" type="button">Sign in with Google</button>
+        <button class="danger" id="btn-signout" type="button">Sign out</button>
+      </div>
+
+      <div class="card">
+        <h2>Seed / backup</h2>
+        <p class="hint">After you sign in the first time, upload this phone so colleagues are not looking at an empty list.</p>
+        <button class="primary" id="btn-push-up" type="button">Upload this phone to the shared list</button>
+        <button class="secondary" id="btn-export-json" type="button">Export JSON backup</button>
         <button class="secondary" id="btn-export-csv" type="button">Export CSV (Excel)</button>
         <label class="file-btn" style="margin-top:10px">Import JSON or CSV
           <input id="import-file" type="file" accept=".json,.csv,text/csv,application/json">
         </label>
       </div>
-      <div class="card">
-        <h2>Optional live URL</h2>
-        <p class="hint">If you host the same JSON on a private gist raw URL, SharePoint anonymous link, or JSONBin, everyone can tap Pull.</p>
-        <div class="field"><label>Snapshot URL</label><input id="cloud-url" placeholder="https://…"></div>
-        <button class="secondary" id="btn-cloud" type="button">Pull team snapshot</button>
-      </div>
+
       <div class="card">
         <h2>This phone</h2>
         <button class="secondary" id="btn-demo" type="button">Reload demo stock</button>
         <button class="danger" id="btn-wipe" type="button">Clear local stock</button>
-        <p class="disclaimer">Personal / team operations helper. Not CE or UKCA marked. Not an Abbott inventory system of record. Do not put patient names in notes. Do not commit live serials to GitHub.</p>
+        <p class="disclaimer">Personal / team operations helper. Not CE or UKCA marked. Not an Abbott inventory system of record. Do not put patient names in notes. Do not commit live serials or the Firebase config to GitHub.</p>
       </div>
     </section>
   </main>
@@ -197,8 +214,12 @@
   <div class="toast" id="toast"></div>
   <div class="modal-bg" id="modal"><div class="modal" id="modal-body"></div></div>
 
+  <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
   <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
   <script src="./data.js"></script>
+  <script src="./cloud.js"></script>
   <script src="./app.js"></script>
 </body>
 </html>
