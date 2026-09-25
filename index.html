@@ -38,14 +38,12 @@
         <div class="kpi warn"><div class="n" id="k-exp">0</div><div class="l"><90d</div></div>
         <div class="kpi bad"><div class="n" id="k-hot">0</div><div class="l"><30d</div></div>
       </div>
-
       <div class="card" style="margin-top:12px">
         <h2>Need a clip fast</h2>
         <p class="hint">Search every hospital from one box. After the team signs in, this is the live national list.</p>
         <button class="primary" type="button" onclick="document.getElementById('find-q').value='XTW';showScreen('find');renderFind()">Find XTW across the UK</button>
         <button class="secondary" type="button" onclick="showScreen('scan')">Scan a box</button>
       </div>
-
       <div class="card">
         <h2>National clip matrix</h2>
         <p class="hint">In-stock units only. Red zero = nothing on the shelf in this app.</p>
@@ -58,12 +56,10 @@
           </table>
         </div>
       </div>
-
       <div class="card">
         <h2>Gaps & expiry</h2>
         <div id="alerts"></div>
       </div>
-
       <div class="card">
         <h2>Activity</h2>
         <div id="activity"></div>
@@ -99,7 +95,7 @@
     <section id="screen-scan" class="screen">
       <div class="card">
         <h2>Scan or type</h2>
-        <p class="hint">Point the camera at the UDI / Code 128 on the pouch. If the camera fails, type the serial.</p>
+        <p class="hint">Scan both bars on the pouch. The top bar is product only. The lower bar has expiry, lot and serial. You can still type if the camera misses.</p>
         <div id="reader" style="display:none;margin-bottom:10px"></div>
         <button class="primary" id="btn-cam" type="button">Open camera</button>
         <button class="secondary" id="btn-cam-stop" type="button">Stop camera</button>
@@ -115,7 +111,7 @@
           <div class="field span2"><label>Hospital</label><select id="scan-hosp"></select></div>
           <div class="field"><label>Expiry</label><input id="scan-exp" type="date"></div>
           <div class="field"><label>Lot</label><input id="scan-lot" placeholder="LOT / (10)"></div>
-          <div class="field span2"><label>Paste UDI string</label><input id="scan-raw-in" placeholder="(01)…(17)…(21)…"></div>
+          <div class="field span2"><label>Paste UDI string</label><input id="scan-raw-in" placeholder="(01)…(17)…(10)…(21)…"></div>
         </div>
         <div class="tiny" id="scan-raw" style="margin:8px 0"></div>
         <button class="primary" id="btn-add" type="button">Add / update consignment</button>
@@ -142,12 +138,10 @@
         <div class="tiny">Signed in as <span id="signed-as">Not signed in</span></div>
         <div id="live-people" style="margin-top:8px"></div>
       </div>
-
       <div class="card">
         <h2>You</h2>
         <div class="field"><label>Name / initials shown on edits</label><input id="who" placeholder="e.g. RO"></div>
       </div>
-
       <div class="card">
         <h2>1. Firebase config · once per phone</h2>
         <p class="hint">Create a private Firebase project (steps in the README). Paste the web config object here. It stays on this phone — do not commit it to GitHub.</p>
@@ -156,7 +150,6 @@
         </div>
         <button class="primary" id="btn-save-fb" type="button">Save config on this phone</button>
       </div>
-
       <div class="card">
         <h2>2. Sign in</h2>
         <p class="hint">Each specialist uses their own email. Create accounts only for the UK TEER team.</p>
@@ -167,7 +160,6 @@
         <button class="secondary" id="btn-google" type="button">Sign in with Google</button>
         <button class="danger" id="btn-signout" type="button">Sign out</button>
       </div>
-
       <div class="card">
         <h2>Seed / backup</h2>
         <p class="hint">After you sign in the first time, upload this phone so colleagues are not looking at an empty list.</p>
@@ -178,7 +170,6 @@
           <input id="import-file" type="file" accept=".json,.csv,text/csv,application/json">
         </label>
       </div>
-
       <div class="card">
         <h2>This phone</h2>
         <button class="secondary" id="btn-demo" type="button">Reload demo stock</button>
@@ -221,5 +212,6 @@
   <script src="./data.js"></script>
   <script src="./cloud.js"></script>
   <script src="./app.js"></script>
+  <script src="./scan-fix.js"></script>
 </body>
 </html>
