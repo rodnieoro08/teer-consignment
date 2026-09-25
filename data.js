@@ -1,4 +1,7 @@
 const CATALOG = [
+  { sku: "CDS0602-NT",  family: "MitraClip G3", kind: "CDS", size: "NT",  label: "G3 NT Clip Delivery System" },
+  { sku: "CDS0602-XT",  family: "MitraClip G3", kind: "CDS", size: "XT",  label: "G3 XT Clip Delivery System" },
+  { sku: "SGC0602",     family: "MitraClip G3", kind: "SGC", size: "SGC", label: "G3 Steerable Guide Catheter" },
   { sku: "CDS0802-NT",  family: "MitraClip G5", kind: "CDS", size: "NT",  label: "G5 NT Clip Delivery System" },
   { sku: "CDS0802-NTW", family: "MitraClip G5", kind: "CDS", size: "NTW", label: "G5 NTW Clip Delivery System" },
   { sku: "CDS0802-XT",  family: "MitraClip G5", kind: "CDS", size: "XT",  label: "G5 XT Clip Delivery System" },
