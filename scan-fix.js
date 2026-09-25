@@ -1,5 +1,6 @@
 /* Overrides scanner behaviour from app.js */
 const GTIN_TO_SKU = {
+  "05415067050854": "CDS0802-NTW",
   "05415067050878": "CDS0802-NT",
   "05415067105078": "CDS0602-NT"
 };
@@ -102,7 +103,7 @@ async function startCamera() {
   const box = document.getElementById("reader");
   box.style.display = "block";
   seenCodes.clear();
-  toast("Aim at the lower barcode");
+  toast("Aim at the barcode under the yellow lot strip");
   if ("BarcodeDetector" in window) {
     try {
       const det = new BarcodeDetector({ formats: ["code_128", "data_matrix", "qr_code", "ean_13", "code_39"] });
@@ -135,7 +136,7 @@ async function startCamera() {
   try {
     await html5Qr.start({ facingMode: "environment" }, { fps: 12, qrbox: { width: 280, height: 120 } }, (txt) => onCode(txt));
   } catch (e) {
-    toast("Camera blocked. Type the values or use a photo of the real box");
+    toast("Camera blocked. Type the values or paste the (17)(10)(91) line");
   }
 }
 async function readPhotoFile(file) {
@@ -171,7 +172,7 @@ async function readPhotoFile(file) {
       }
     } catch (e) { console.warn(e); }
   }
-  toast("Photo not read. Type lot 51222A2032 and serial 3032, or paste the (17)(10)(91) line");
+  toast("Photo not read. Paste the (17)(10)(91) line from under the barcode");
 }
 (function rebindPhoto() {
   const old = document.getElementById("scan-photo");
