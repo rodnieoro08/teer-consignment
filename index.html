@@ -95,7 +95,7 @@
     <section id="screen-scan" class="screen">
       <div class="card">
         <h2>Scan or type</h2>
-        <p class="hint">Scan both bars on the pouch. The top bar is product only. The lower bar has expiry, lot and serial. You can still type if the camera misses.</p>
+        <p class="hint">Point the camera at the barcode under the yellow LOT strip. You should not need to type the long UDI. If the camera misses, use a close photo of that barcode only.</p>
         <div id="reader" style="display:none;margin-bottom:10px"></div>
         <button class="primary" id="btn-cam" type="button">Open camera</button>
         <button class="secondary" id="btn-cam-stop" type="button">Stop camera</button>
@@ -109,9 +109,9 @@
           <div class="field span2"><label>SKU / REF</label><select id="scan-sku"></select></div>
           <div class="field span2"><label>Lot</label><input id="scan-lot" placeholder="LOT / (10)"></div>
           <div class="field span2"><label>Hospital</label><select id="scan-hosp"></select></div>
-          <div class="field span2"><label>Serial</label><input id="scan-sn" placeholder="SN / (21) or (91)"></div>
+          <div class="field span2"><label>Serial</label><input id="scan-sn" placeholder="SN / (91)"></div>
           <div class="field span2"><label>Expiry</label><input id="scan-exp" type="date"></div>
-          <div class="field span2"><label>Paste UDI string</label><input id="scan-raw-in" placeholder="(01)…(17)…(10)…(91)…"></div>
+          <div class="field span2"><label>Paste UDI string</label><input id="scan-raw-in" placeholder="only if scan fails"></div>
         </div>
         <div class="tiny" id="scan-raw" style="margin:8px 0"></div>
         <button class="primary" id="btn-add" type="button">Add / update consignment</button>
@@ -208,6 +208,7 @@
   <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
+  <script src="https://unpkg.com/@zxing/library@0.21.3/umd/index.min.js"></script>
   <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
   <script src="./data.js"></script>
   <script src="./cloud.js"></script>
