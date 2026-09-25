@@ -106,12 +106,12 @@
       <div class="card">
         <h2>Unit</h2>
         <div class="grid-2">
-          <div class="field span2"><label>Serial</label><input id="scan-sn" placeholder="SN / (21)"></div>
           <div class="field span2"><label>SKU / REF</label><select id="scan-sku"></select></div>
+          <div class="field span2"><label>Lot</label><input id="scan-lot" placeholder="LOT / (10)"></div>
           <div class="field span2"><label>Hospital</label><select id="scan-hosp"></select></div>
-          <div class="field"><label>Expiry</label><input id="scan-exp" type="date"></div>
-          <div class="field"><label>Lot</label><input id="scan-lot" placeholder="LOT / (10)"></div>
-          <div class="field span2"><label>Paste UDI string</label><input id="scan-raw-in" placeholder="(01)…(17)…(10)…(21)…"></div>
+          <div class="field span2"><label>Serial</label><input id="scan-sn" placeholder="SN / (21) or (91)"></div>
+          <div class="field span2"><label>Expiry</label><input id="scan-exp" type="date"></div>
+          <div class="field span2"><label>Paste UDI string</label><input id="scan-raw-in" placeholder="(01)…(17)…(10)…(91)…"></div>
         </div>
         <div class="tiny" id="scan-raw" style="margin:8px 0"></div>
         <button class="primary" id="btn-add" type="button">Add / update consignment</button>
