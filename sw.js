@@ -1,4 +1,4 @@
-const CACHE = "teer-consign-v6";
+const CACHE = "teer-consign-v7";
 const ASSETS = ["./", "./index.html", "./styles.css", "./app.js", "./scan-fix.js", "./cloud.js", "./data.js", "./manifest.json", "./icon.svg"];
 self.addEventListener("install", (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(ASSETS)));

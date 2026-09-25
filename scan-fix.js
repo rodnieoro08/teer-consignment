@@ -1,9 +1,10 @@
-/* Overrides scanner behaviour from app.js */
+/* Overrides scanner from app.js — ZXing reads Abbott Code 128 on iPhone */
 const GTIN_TO_SKU = {
   "05415067050854": "CDS0802-NTW",
   "05415067050878": "CDS0802-NT",
   "05415067105078": "CDS0602-NT"
 };
+let zxingReader = null;
 
 function yymmdd(s) {
   if (!s || !/^\d{6}$/.test(s)) return "";
@@ -62,9 +63,7 @@ function parseUDI(text) {
   return out;
 }
 function scanComplete() {
-  const sn = document.getElementById("scan-sn").value.trim();
-  const lot = document.getElementById("scan-lot").value.trim();
-  return !!(sn && lot);
+  return !!(document.getElementById("scan-sn").value.trim() && document.getElementById("scan-lot").value.trim());
 }
 function fillScanFrom(text) {
   const p = parseUDI(text);
@@ -81,8 +80,7 @@ function fillScanFrom(text) {
   if (p.expiry) document.getElementById("scan-exp").value = p.expiry;
   if (p.lot) document.getElementById("scan-lot").value = p.lot;
   const rawEl = document.getElementById("scan-raw");
-  const prev = rawEl.textContent || "";
-  rawEl.textContent = [prev, p.raw].filter(Boolean).join(" | ");
+  rawEl.textContent = [rawEl.textContent, p.raw].filter(Boolean).join(" | ");
   if (p.gtin && p.sku) GTIN_TO_SKU[p.gtin] = p.sku;
   return p;
 }
@@ -90,33 +88,49 @@ const seenCodes = new Set();
 function onCode(txt) {
   if (!txt || seenCodes.has(txt)) return false;
   seenCodes.add(txt);
-  const p = fillScanFrom(txt);
-  if (p.gtin && !p.lot && !p.serial) {
-    toast("Product code read. Point at the lower barcode");
-    return false;
+  fillScanFrom(txt);
+  if (scanComplete()) {
+    toast("Filled from barcode");
+    stopCamera();
+    return true;
   }
-  if (scanComplete()) { toast("Lot and serial filled"); stopCamera(); return true; }
-  toast("Keep scanning the other bar");
+  toast("Got a code — hold on the same barcode");
   return false;
 }
-async function startCamera() {
+function ensureVideo() {
   const box = document.getElementById("reader");
   box.style.display = "block";
+  let video = document.getElementById("native-video");
+  if (!video) {
+    video = document.createElement("video");
+    video.id = "native-video";
+    video.setAttribute("playsinline", "true");
+    video.setAttribute("autoplay", "true");
+    video.setAttribute("muted", "true");
+    video.style.width = "100%";
+    box.innerHTML = "";
+    box.appendChild(video);
+  }
+  return video;
+}
+async function startCamera() {
   seenCodes.clear();
-  toast("Aim at the barcode under the yellow lot strip");
+  const video = ensureVideo();
+  toast("Hold still on the barcode under LOT");
+  if (window.ZXing && ZXing.BrowserMultiFormatReader) {
+    try {
+      if (zxingReader) { try { zxingReader.reset(); } catch (_) {} }
+      zxingReader = new ZXing.BrowserMultiFormatReader();
+      await zxingReader.decodeFromVideoDevice(undefined, video, (result) => {
+        if (result) onCode(result.getText());
+      });
+      return;
+    } catch (e) { console.warn(e); }
+  }
   if ("BarcodeDetector" in window) {
     try {
       const det = new BarcodeDetector({ formats: ["code_128", "data_matrix", "qr_code", "ean_13", "code_39"] });
       const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: "environment" } } });
-      let video = document.getElementById("native-video");
-      if (!video) {
-        video = document.createElement("video");
-        video.id = "native-video";
-        video.setAttribute("playsinline", "true");
-        video.style.width = "100%";
-        box.innerHTML = "";
-        box.appendChild(video);
-      }
       video.srcObject = stream;
       await video.play();
       const tick = async () => {
@@ -131,48 +145,62 @@ async function startCamera() {
       return;
     } catch (e) { console.warn(e); }
   }
-  if (!window.Html5Qrcode) { toast("Type serial, lot and REF instead"); return; }
+  if (!window.Html5Qrcode) { toast("Type REF, lot and the (91) number from the yellow strip"); return; }
   html5Qr = new Html5Qrcode("reader");
   try {
     await html5Qr.start({ facingMode: "environment" }, { fps: 12, qrbox: { width: 280, height: 120 } }, (txt) => onCode(txt));
   } catch (e) {
-    toast("Camera blocked. Type the values or paste the (17)(10)(91) line");
+    toast("Camera blocked. Use Read barcode from photo instead");
+  }
+}
+async function stopCamera() {
+  if (zxingReader) {
+    try { zxingReader.reset(); } catch (_) {}
+    zxingReader = null;
+  }
+  const video = document.getElementById("native-video");
+  if (video && video.srcObject) {
+    video.srcObject.getTracks().forEach(t => t.stop());
+    video.srcObject = null;
+  }
+  if (typeof html5Qr !== "undefined" && html5Qr) {
+    try { await html5Qr.stop(); } catch (_) {}
+    html5Qr = null;
   }
 }
 async function readPhotoFile(file) {
   if (!file) return;
   seenCodes.clear();
+  toast("Reading photo…");
+  const url = URL.createObjectURL(file);
+  try {
+    if (window.ZXing && ZXing.BrowserMultiFormatReader) {
+      const reader = new ZXing.BrowserMultiFormatReader();
+      const result = await reader.decodeFromImageUrl(url);
+      if (result) {
+        fillScanFrom(result.getText());
+        if (scanComplete()) { toast("Filled from photo"); URL.revokeObjectURL(url); return; }
+      }
+    }
+  } catch (e) { console.warn(e); }
+  URL.revokeObjectURL(url);
   if (window.Html5Qrcode) {
     try {
-      const tmpId = "photo-reader-hidden";
-      let holder = document.getElementById(tmpId);
+      let holder = document.getElementById("photo-reader-hidden");
       if (!holder) {
         holder = document.createElement("div");
-        holder.id = tmpId;
+        holder.id = "photo-reader-hidden";
         holder.style.display = "none";
         document.body.appendChild(holder);
       }
-      const qr = new Html5Qrcode(tmpId);
+      const qr = new Html5Qrcode("photo-reader-hidden");
       const txt = await qr.scanFile(file, true);
       fillScanFrom(txt);
       try { await qr.clear(); } catch (_) {}
-      if (scanComplete()) { toast("Read from photo"); return; }
-    } catch (e) {
-      console.warn(e);
-    }
-  }
-  if ("BarcodeDetector" in window) {
-    try {
-      const det = new BarcodeDetector({ formats: ["code_128", "data_matrix", "qr_code", "ean_13"] });
-      const codes = await det.detect(await createImageBitmap(file));
-      codes.forEach(c => fillScanFrom(c.rawValue));
-      if (codes.length) {
-        toast(scanComplete() ? "Read from photo" : "Photo read — check lot/serial");
-        return;
-      }
+      if (scanComplete()) { toast("Filled from photo"); return; }
     } catch (e) { console.warn(e); }
   }
-  toast("Photo not read. Paste the (17)(10)(91) line from under the barcode");
+  toast("Could not read that photo. Take a closer shot of the barcode only");
 }
 (function rebindPhoto() {
   const old = document.getElementById("scan-photo");
