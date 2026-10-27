@@ -9,7 +9,7 @@
   <title>TEER Consignment</title>
   <link rel="manifest" href="./manifest.json" />
   <link rel="stylesheet" href="./styles.css" />
-  <link rel="apple-touch-icon" href="./icon.svg" />
+  <link rel="apple-touch-icon" href="./apple-touch-icon.png" />
   <style>
     .flag-line { font-size: 13px; padding: 8px 0; border-bottom: 1px solid var(--line); color: #d7e6f2; }
     .flag-line:last-child { border-bottom: 0; }
@@ -46,23 +46,20 @@
       </div>
       <div class="card">
         <h2>National clip matrix</h2>
-        <p class="hint">In-stock units only. Red zero = nothing on the shelf in this app.</p>
-        <div style="overflow:auto">
-          <table class="matrix">
-            <thead>
-              <tr><th>Hospital</th><th>NT</th><th>NTW</th><th>XT</th><th>XTW</th><th>SGC</th></tr>
-            </thead>
-            <tbody id="matrix-body"></tbody>
-          </table>
-        </div>
+        <p class="hint">In-stock units only. MitraClip and TriClip, and G4 and G5, are separate. A red zero is an empty shelf. Amber is below the par you set.</p>
+        <div id="matrix"></div>
       </div>
       <div class="card">
-        <h2>Gaps & expiry</h2>
+        <h2>Reorder & expiry</h2>
+        <p class="hint">Set par levels on a hospital. This list is what to send back when a site is short.</p>
         <div id="alerts"></div>
+        <button class="secondary" id="btn-reorder-csv" type="button">Export reorder list</button>
+        <button class="secondary" id="btn-reorder-share" type="button">Share reorder list</button>
       </div>
       <div class="card">
         <h2>Activity</h2>
         <div id="activity"></div>
+        <button class="secondary" id="btn-earlier" type="button" style="display:none">Show earlier activity</button>
       </div>
     </section>
 
@@ -152,13 +149,18 @@
       </div>
       <div class="card">
         <h2>2. Sign in</h2>
-        <p class="hint">Each specialist uses their own email. Create accounts only for the UK TEER team.</p>
+        <p class="hint">Each specialist uses their own email. Creating a login does not grant access. An admin must add that email to the team list first.</p>
         <div class="field"><label>Email</label><input id="fb-email" type="email" placeholder="you@abbott.com" autocomplete="username"></div>
         <div class="field" style="margin-top:8px"><label>Password</label><input id="fb-pass" type="password" autocomplete="current-password"></div>
         <button class="primary" id="btn-signin" type="button">Sign in</button>
-        <button class="secondary" id="btn-signup" type="button">Create team account</button>
+        <button class="secondary" id="btn-signup" type="button">Create login</button>
         <button class="secondary" id="btn-google" type="button">Sign in with Google</button>
         <button class="danger" id="btn-signout" type="button">Sign out</button>
+      </div>
+      <div class="card" id="access-card">
+        <h2>Team list</h2>
+        <p class="hint" id="access-status">Sign in to see whether your email is on the team list.</p>
+        <div id="access-actions"></div>
       </div>
       <div class="card">
         <h2>Seed / backup</h2>
@@ -210,7 +212,12 @@
   <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
   <script src="https://unpkg.com/@zxing/library@0.21.3/umd/index.min.js"></script>
   <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+  <script src="./util.js"></script>
   <script src="./data.js"></script>
+  <script src="./csv.js"></script>
+  <script src="./gs1.js"></script>
+  <script src="./sync-merge.js"></script>
+  <script src="./pars.js"></script>
   <script src="./cloud.js"></script>
   <script src="./app.js"></script>
   <script src="./scan-fix.js"></script>

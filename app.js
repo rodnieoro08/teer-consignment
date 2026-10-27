@@ -4,22 +4,30 @@ const state = {
   hospitals: HOSPITALS,
   catalog: CATALOG,
   units: [],
+  pars: [],
   events: [],
   settings: { specialist: "", team: "UK TEER", cloudUrl: "", lastHospital: "barts" }
 };
+function emptySync() {
+  return { pendingUnitIds: [], pendingDeleteIds: [], seenUnitIds: [], pendingEventIds: [], pendingParIds: [], pendingParDeleteIds: [], seenParIds: [] };
+}
 function load() {
+  state.sync = emptySync();
   try {
     const raw = localStorage.getItem(KEY);
     if (!raw) {
       state.units = demoUnits();
-      state.events = [{ at: new Date().toISOString(), text: "Demo consignment loaded. Replace with your real serials." }];
+      state.pars = demoPars();
+      state.events = [{ id: crypto.randomUUID(), at: new Date().toISOString(), text: "Demo consignment loaded. Replace with your real serials." }];
       save();
       return;
     }
     const d = JSON.parse(raw);
     state.units = d.units || [];
+    state.pars = d.pars || [];
     state.events = d.events || [];
     state.settings = Object.assign(state.settings, d.settings || {});
+    state.sync = Object.assign(emptySync(), d.sync || {});
     if (d.hospitalsExtra) {
       d.hospitalsExtra.forEach(h => {
         if (!state.hospitals.find(x => x.id === h.id)) state.hospitals.push(h);
@@ -27,15 +35,70 @@ function load() {
     }
   } catch (e) {
     state.units = demoUnits();
+    state.pars = demoPars();
   }
+  let stamped = false;
+  state.events.forEach(e => {
+    if (e && !e.id) { e.id = crypto.randomUUID(); stamped = true; }
+  });
+  if (stamped) save();
 }
 function save() {
   if (typeof saveLocalOnly === "function") saveLocalOnly();
   else localStorage.setItem(KEY, JSON.stringify({ units: state.units, events: state.events.slice(0, 300), settings: state.settings, hospitalsExtra: state.hospitals.filter(h => h.custom) }));
 }
+function markPendingUnit(id) {
+  if (!id || !state.sync) return;
+  if (!state.sync.pendingUnitIds.includes(id)) state.sync.pendingUnitIds.push(id);
+}
+function clearPendingUnit(id) {
+  if (!state.sync) return;
+  state.sync.pendingUnitIds = state.sync.pendingUnitIds.filter(item => item !== id);
+}
+function markPendingDelete(id) {
+  if (!id || !state.sync) return;
+  clearPendingUnit(id);
+  if (!state.sync.pendingDeleteIds.includes(id)) state.sync.pendingDeleteIds.push(id);
+}
+function markPendingEvent(id) {
+  if (!id || !state.sync) return;
+  if (!state.sync.pendingEventIds.includes(id)) state.sync.pendingEventIds.push(id);
+}
+function clearPendingEvent(id) {
+  if (!state.sync) return;
+  state.sync.pendingEventIds = state.sync.pendingEventIds.filter(item => item !== id);
+}
+function markPendingPar(id) {
+  if (!id || !state.sync) return;
+  state.sync.pendingParDeleteIds = state.sync.pendingParDeleteIds.filter(item => item !== id);
+  if (!state.sync.pendingParIds.includes(id)) state.sync.pendingParIds.push(id);
+}
+function clearPendingPar(id) {
+  if (!state.sync) return;
+  state.sync.pendingParIds = state.sync.pendingParIds.filter(item => item !== id);
+}
+function markPendingParDelete(id) {
+  if (!id || !state.sync) return;
+  clearPendingPar(id);
+  if (!state.sync.pendingParDeleteIds.includes(id)) state.sync.pendingParDeleteIds.push(id);
+}
+function clearPendingParDelete(id) {
+  if (!state.sync) return;
+  state.sync.pendingParDeleteIds = state.sync.pendingParDeleteIds.filter(item => item !== id);
+}
 async function saveUnitCloud(u) {
+  if (!(cloud && cloud.live)) markPendingUnit(u.id);
   save();
-  if (typeof cloudUpsert === "function") { try { await cloudUpsert("units", u.id, u); } catch (e) { toast(e.message); } }
+  if (typeof cloudUpsert === "function") {
+    try {
+      await cloudUpsert("units", u.id, u);
+      if (cloud && cloud.live) clearPendingUnit(u.id);
+    } catch (e) {
+      markPendingUnit(u.id);
+      save();
+      toast(e.message);
+    }
+  }
 }
 function toast(msg) {
   const el = document.getElementById("toast");
@@ -51,10 +114,18 @@ function daysTo(exp) {
   return Math.ceil((new Date(exp + "T00:00:00") - new Date()) / 86400000);
 }
 async function log(text) {
-  const ev = { id: crypto.randomUUID(), at: new Date().toISOString(), text, by: (state.settings.specialist || "") };
+  const ev = { id: crypto.randomUUID(), at: new Date().toISOString(), text: String(text || "").slice(0, 480), by: (state.settings.specialist || "") };
   state.events.unshift(ev);
+  if (!(cloud && cloud.live)) markPendingEvent(ev.id);
   save();
-  if (typeof cloudUpsert === "function") { try { await cloudUpsert("events", ev.id, ev); } catch (_) {} }
+  if (typeof cloudUpsert === "function") {
+    try {
+      await cloudUpsert("events", ev.id, ev);
+      if (cloud && cloud.live) clearPendingEvent(ev.id);
+    } catch (_) {
+      markPendingEvent(ev.id);
+    }
+  }
 }
 function countsByHospital(hid) {
   const units = state.units.filter(u => u.hospitalId === hid && inStock(u));
@@ -73,22 +144,33 @@ function renderHome() {
   document.getElementById("k-hot").textContent = exp30.length;
   document.getElementById("k-exp").parentElement.className = "kpi" + (exp90.length ? " warn" : "");
   document.getElementById("k-hot").parentElement.className = "kpi" + (exp30.length ? " bad" : "");
-  const rows = state.hospitals.map(h => {
-    const c = countsByHospital(h.id);
-    if (!c.total) return "";
-    return `<tr><td>${h.name}<div class="tiny">${h.city}</div></td>${SIZES.map(s => `<td class="${c[s] ? "okn" : "zero"}">${c[s]}</td>`).join("")}</tr>`;
+  const matrix = MATRIX_FAMILIES.map(group => {
+    const body = state.hospitals.map(h => {
+      const cells = group.sizes.map(size => {
+        const have = countInStock(state.units, h.id, group.family, size, catalogOf);
+        const par = parAmount(state.pars, h.id, group.family, size);
+        return { have, par };
+      });
+      if (!cells.some(cell => cell.have || cell.par)) return "";
+      return `<tr><td>${esc(h.name)}<div class="tiny">${esc(h.city)}</div></td>${cells.map(cell => {
+        const cls = cell.have === 0 ? "zero" : (cell.par > 0 && cell.have < cell.par ? "below" : "okn");
+        const note = cell.par > 0 ? `<div class="tiny">${cell.have === 0 ? "at zero" : cell.have < cell.par ? "below " + cell.par : "par " + cell.par}</div>` : "";
+        return `<td class="${cls}">${cell.have}${note}</td>`;
+      }).join("")}</tr>`;
+    }).join("");
+    if (!body) return "";
+    return `<h3 class="matrix-family">${esc(group.family)}</h3><div class="matrix-scroll"><table class="matrix"><thead><tr><th>Hospital</th>${group.sizes.map(size => `<th>${esc(size)}</th>`).join("")}</tr></thead><tbody>${body}</tbody></table></div>`;
   }).join("");
-  document.getElementById("matrix-body").innerHTML = rows || `<tr><td colspan="6" class="empty">No stock yet</td></tr>`;
-  const alerts = [];
-  state.hospitals.forEach(h => {
-    const c = countsByHospital(h.id);
-    if (!c.total) return;
-    if (!c.XTW) alerts.push(h.name + " has no XTW");
-    if (!c.SGC) alerts.push(h.name + " has no SGC");
+  const matrixEl = document.getElementById("matrix");
+  if (matrixEl) matrixEl.innerHTML = matrix || `<div class="empty">No stock yet</div>`;
+  const deficits = reorderDeficits(state.hospitals, state.units, state.pars, catalogOf);
+  const alerts = deficits.slice(0, 8).map(line => {
+    const badge = line.atZero ? "At zero" : "Below par";
+    return esc(badge) + " · " + esc(line.hospital) + " · " + esc(line.family) + " " + esc(line.size) + " · " + line.have + " of " + line.par;
   });
-  exp30.forEach(u => alerts.push(catalogOf(u.sku).size + " " + u.serial + " at " + hospitalOf(u.hospitalId).name + " expires " + u.expiry));
-  document.getElementById("alerts").innerHTML = alerts.slice(0, 8).map(a => `<div class="flag-line">${a}</div>`).join("") || `<div class="empty">No gaps flagged</div>`;
-  document.getElementById("activity").innerHTML = state.events.slice(0, 8).map(e => `<div class="row"><div><div class="t">${e.text}</div><div class="m">${new Date(e.at).toLocaleString("en-GB")}${e.by ? " · " + e.by : ""}</div></div></div>`).join("") || `<div class="empty">No activity yet</div>`;
+  exp30.forEach(u => alerts.push(esc(catalogOf(u.sku).family) + " " + esc(catalogOf(u.sku).size) + " " + esc(u.serial) + " at " + esc(hospitalOf(u.hospitalId).name) + " expires " + esc(u.expiry)));
+  document.getElementById("alerts").innerHTML = alerts.slice(0, 8).map(a => `<div class="flag-line">${a}</div>`).join("") || `<div class="empty">Nothing below par. Set par levels on a hospital to flag reorders.</div>`;
+  document.getElementById("activity").innerHTML = state.events.slice(0, 8).map(e => `<div class="row"><div><div class="t">${esc(e.text)}</div><div class="m">${esc(new Date(e.at).toLocaleString("en-GB"))}${e.by ? " · " + esc(e.by) : ""}</div></div></div>`).join("") || `<div class="empty">No activity yet</div>`;
 }
 function renderFind() {
   const q = (document.getElementById("find-q").value || "").trim().toLowerCase();
@@ -100,7 +182,7 @@ function renderFind() {
   if (size) units = units.filter(u => catalogOf(u.sku).size === size);
   if (q) units = units.filter(u => {
     const h = hospitalOf(u.hospitalId); const c = catalogOf(u.sku);
-    return [u.serial, u.sku, u.lot, c.label, c.size, h.name, h.city, h.region].join(" ").toLowerCase().includes(q);
+    return [u.serial, u.sku, u.lot, c.label, c.family, c.size, h.name, h.city, h.region].join(" ").toLowerCase().includes(q);
   });
   units.sort((a, b) => hospitalOf(a.hospitalId).name.localeCompare(hospitalOf(b.hospitalId).name));
   document.getElementById("find-results").innerHTML = units.map(unitCard).join("") || `<div class="empty">Nothing matches. Try XTW or a serial.</div>`;
@@ -112,31 +194,100 @@ function chipClass(size) {
 function unitCard(u) {
   const c = catalogOf(u.sku); const h = hospitalOf(u.hospitalId); const d = daysTo(u.expiry);
   const expNote = !u.expiry ? "" : d < 0 ? "EXPIRED" : d <= 90 ? d + "d left" : u.expiry;
-  return `<button class="list-btn" onclick="openUnit('${u.id}')"><div class="row"><div><div class="t">${u.serial}</div><div class="m">${c.sku} · ${c.label}</div><span class="chip ${chipClass(c.size)}">${c.size}</span><span class="chip ${u.status === "in-stock" ? "in" : u.status === "used" ? "used" : "xfer"}">${u.status}</span></div><div class="r">${h.name}<div>${expNote}</div></div></div></button>`;
+  return `<button class="list-btn" onclick="openUnit('${escJs(u.id)}')"><div class="row"><div><div class="t">${esc(u.serial)}</div><div class="m">${esc(c.sku)} · ${esc(c.label)}</div><span class="chip ${chipClass(c.size)}">${esc(c.size)}</span><span class="chip ${u.status === "in-stock" ? "in" : u.status === "used" ? "used" : "xfer"}">${esc(u.status)}</span></div><div class="r">${esc(h.name)}<div>${esc(expNote)}</div></div></div></button>`;
 }
 function renderHospitals() {
   const q = (document.getElementById("hosp-q").value || "").trim().toLowerCase();
   document.getElementById("hosp-list").innerHTML = state.hospitals.filter(h => !q || [h.name, h.city, h.region].join(" ").toLowerCase().includes(q)).map(h => {
     const c = countsByHospital(h.id);
-    return `<div class="card hospital-card" onclick="openHospital('${h.id}')"><div class="row" style="padding-top:0"><div><div class="t">${h.name}</div><div class="m">${h.city} · ${h.region}</div>${SIZES.map(s => `<span class="chip ${chipClass(s)}">${s} ${c[s]}</span>`).join("")}</div><div class="r"><b>${c.total}</b><div>in stock</div></div></div></div>`;
+    const families = MATRIX_FAMILIES.map(group => {
+      const n = group.sizes.reduce((sum, size) => sum + countInStock(state.units, h.id, group.family, size, catalogOf), 0);
+      return n ? esc(group.family) + " " + n : "";
+    }).filter(Boolean).join(" · ");
+    const short = reorderDeficits([h], state.units, state.pars, catalogOf).length;
+    return `<div class="card hospital-card" onclick="openHospital('${escJs(h.id)}')"><div class="row" style="padding-top:0"><div><div class="t">${esc(h.name)}</div><div class="m">${esc(h.city)} · ${esc(h.region)}</div><div class="tiny">${families || "No stock recorded"}</div>${short ? `<span class="chip used">${short} below par</span>` : ""}</div><div class="r"><b>${c.total}</b><div>in stock</div></div></div></div>`;
   }).join("");
 }
 function skuOptions(selected) {
-  return state.catalog.map(c => `<option value="${c.sku}" ${c.sku === selected ? "selected" : ""}>${c.sku} — ${c.label}</option>`).join("");
+  return state.catalog.map(c => `<option value="${esc(c.sku)}" ${c.sku === selected ? "selected" : ""}>${esc(c.sku)} — ${esc(c.label)}</option>`).join("");
 }
 function hospOptions(selected) {
-  return state.hospitals.map(h => `<option value="${h.id}" ${h.id === selected ? "selected" : ""}>${h.name}</option>`).join("");
+  return state.hospitals.map(h => `<option value="${esc(h.id)}" ${h.id === selected ? "selected" : ""}>${esc(h.name)}</option>`).join("");
 }
 function openHospital(id) {
   const h = hospitalOf(id);
   state.settings.lastHospital = id; save();
   const units = state.units.filter(u => u.hospitalId === id).sort((a, b) => a.status.localeCompare(b.status));
-  showModal(`<h2>${h.name}</h2><p class="hint">${h.city} · ${h.region}</p><button class="primary" onclick="prepScan('${id}')">Scan into this hospital</button><div style="margin-top:12px">${units.map(unitCard).join("") || "<div class='empty'>No units recorded</div>"}</div><button class="secondary" onclick="closeModal()">Close</button>`);
+  showModal(`<h2>${esc(h.name)}</h2><p class="hint">${esc(h.city)} · ${esc(h.region)}</p><button class="primary" onclick="prepScan('${escJs(id)}')">Scan into this hospital</button><div style="margin-top:12px">${units.map(unitCard).join("") || "<div class='empty'>No units recorded</div>"}</div>${parEditor(id)}<button class="secondary" onclick="closeModal()">Close</button>`);
+}
+function parEditor(hospitalId) {
+  const blocks = MATRIX_FAMILIES.map(group => {
+    const open = group.sizes.some(size => parAmount(state.pars, hospitalId, group.family, size) > 0 || countInStock(state.units, hospitalId, group.family, size, catalogOf) > 0);
+    const fields = group.sizes.map(size => {
+      const have = countInStock(state.units, hospitalId, group.family, size, catalogOf);
+      const par = parAmount(state.pars, hospitalId, group.family, size);
+      return `<label class="par-row"><span>${esc(size)} <span class="tiny">in stock ${have}</span></span><input data-par-family="${esc(group.family)}" data-par-size="${esc(size)}" type="number" min="0" max="99" inputmode="numeric" value="${par}"></label>`;
+    }).join("");
+    return `<details class="par-block"${open ? " open" : ""}><summary>${esc(group.family)}</summary>${fields}</details>`;
+  }).join("");
+  return `<h2 class="matrix-family">Par levels</h2><p class="hint">How many of each size should be on the shelf. Delivery systems and bundles of the same size count together. 0 means this site does not stock that size. G4 and G5 stay separate, and TriClip is not mixed with MitraClip.</p>${blocks}<button class="primary" type="button" onclick="saveHospitalPars('${escJs(hospitalId)}')">Save par levels</button>`;
+}
+async function saveHospitalPars(hospitalId) {
+  const inputs = document.querySelectorAll("#modal-body [data-par-size]");
+  for (const input of inputs) {
+    const family = input.getAttribute("data-par-family");
+    const size = input.getAttribute("data-par-size");
+    let par = parseInt(input.value, 10);
+    if (!Number.isFinite(par) || par < 0) par = 0;
+    if (par > 99) par = 99;
+    const id = parDocId(hospitalId, family, size);
+    const existing = state.pars.find(item => item.id === id);
+    if (par === 0) {
+      if (existing) {
+        state.pars = state.pars.filter(item => item.id !== id);
+        markPendingParDelete(id);
+        if (cloud && cloud.live && typeof cloudDelete === "function") {
+          try { await cloudDelete("pars", id); clearPendingParDelete(id); } catch (e) { toast(e.message); }
+        }
+      }
+      continue;
+    }
+    const row = { id, hospitalId, family, familyKey: familyKey(family), size, par, updatedAt: new Date().toISOString() };
+    if (existing) Object.assign(existing, row);
+    else state.pars.push(row);
+    if (!(cloud && cloud.live)) markPendingPar(id);
+    if (cloud && cloud.live && typeof cloudUpsert === "function") {
+      try { await cloudUpsert("pars", id, row); clearPendingPar(id); }
+      catch (e) { markPendingPar(id); toast(e.message); }
+    }
+  }
+  save();
+  closeModal();
+  refresh();
+  toast(cloud && cloud.live ? "Par levels saved for the team" : "Par levels saved on this phone");
+}
+function exportReorder() {
+  const lines = reorderDeficits(state.hospitals, state.units, state.pars, catalogOf);
+  const rows = [["hospital", "family", "size", "in stock", "par", "short", "at zero"]];
+  lines.forEach(line => rows.push([line.hospital, line.family, line.size, String(line.have), String(line.par), String(line.short), line.atZero ? "yes" : "no"]));
+  download(new Blob([toCsv(rows)], { type: "text/csv" }), "teer-reorder-" + dateStamp() + ".csv");
+}
+async function shareReorder() {
+  const lines = reorderDeficits(state.hospitals, state.units, state.pars, catalogOf);
+  const text = lines.length
+    ? lines.map(line => line.hospital + ": " + line.family + " " + line.size + " has " + line.have + ", par " + line.par + ", short " + line.short).join("\n")
+    : "Nothing is below par.";
+  if (navigator.share) {
+    try { await navigator.share({ title: "TEER reorder list", text }); return; }
+    catch (e) { if (e && e.name === "AbortError") return; }
+  }
+  exportReorder();
+  toast("Reorder list downloaded");
 }
 function openUnit(id) {
   const u = state.units.find(x => x.id === id); if (!u) return;
   const c = catalogOf(u.sku);
-  showModal(`<h2>${u.serial}</h2><p class="hint">${c.sku} · ${c.label}<br>${hospitalOf(u.hospitalId).name} · ${u.status}${u.updatedBy ? "<br>Last edit: " + u.updatedBy : ""}</p><div class="grid-2"><div class="field"><label>SKU</label><select id="u-sku">${skuOptions(u.sku)}</select></div><div class="field"><label>Hospital</label><select id="u-hosp">${hospOptions(u.hospitalId)}</select></div><div class="field"><label>Serial</label><input id="u-sn" value="${u.serial}"></div><div class="field"><label>Expiry</label><input id="u-exp" type="date" value="${u.expiry || ""}"></div><div class="field"><label>Status</label><select id="u-st"><option ${u.status==="in-stock"?"selected":""}>in-stock</option><option ${u.status==="used"?"selected":""}>used</option><option ${u.status==="in-transit"?"selected":""}>in-transit</option><option ${u.status==="quarantine"?"selected":""}>quarantine</option></select></div><div class="field"><label>Lot</label><input id="u-lot" value="${u.lot || ""}"></div><div class="field span2"><label>Notes</label><textarea id="u-notes">${u.notes || ""}</textarea></div></div><button class="primary" onclick="saveUnit('${u.id}')">Save</button><button class="secondary" onclick="markUsed('${u.id}')">Mark used in case</button><button class="secondary" onclick="startTransfer('${u.id}')">Borrow / transfer</button><button class="danger" onclick="deleteUnit('${u.id}')">Delete unit</button>`);
+  showModal(`<h2>${esc(u.serial)}</h2><p class="hint">${esc(c.sku)} · ${esc(c.label)}<br>${esc(hospitalOf(u.hospitalId).name)} · ${esc(u.status)}${u.updatedBy ? "<br>Last edit: " + esc(u.updatedBy) : ""}</p><div class="grid-2"><div class="field"><label>SKU</label><select id="u-sku">${skuOptions(u.sku)}</select></div><div class="field"><label>Hospital</label><select id="u-hosp">${hospOptions(u.hospitalId)}</select></div><div class="field"><label>Serial</label><input id="u-sn" value="${esc(u.serial)}"></div><div class="field"><label>Expiry</label><input id="u-exp" type="date" value="${esc(u.expiry || "")}"></div><div class="field"><label>Status</label><select id="u-st"><option ${u.status==="in-stock"?"selected":""}>in-stock</option><option ${u.status==="used"?"selected":""}>used</option><option ${u.status==="in-transit"?"selected":""}>in-transit</option><option ${u.status==="quarantine"?"selected":""}>quarantine</option></select></div><div class="field"><label>Lot</label><input id="u-lot" value="${esc(u.lot || "")}"></div><div class="field span2"><label>Notes</label><textarea id="u-notes">${esc(u.notes || "")}</textarea></div></div><button class="primary" onclick="saveUnit('${escJs(u.id)}')">Save</button><button class="secondary" onclick="markUsed('${escJs(u.id)}')">Mark used in case</button><button class="secondary" onclick="startTransfer('${escJs(u.id)}')">Borrow / transfer</button><button class="danger" onclick="deleteUnit('${escJs(u.id)}')">Delete unit</button>`);
 }
 async function saveUnit(id) {
   const u = state.units.find(x => x.id === id);
@@ -164,13 +315,18 @@ async function markUsed(id) {
 async function deleteUnit(id) {
   const u = state.units.find(x => x.id === id);
   if (!confirm("Delete this unit from the shared list?")) return;
-  state.units = state.units.filter(x => x.id !== id); save();
-  if (typeof cloudDelete === "function") { try { await cloudDelete("units", id); } catch (e) { toast(e.message); } }
+  state.units = state.units.filter(x => x.id !== id);
+  if (cloud && cloud.live && typeof cloudDelete === "function") {
+    try { await cloudDelete("units", id); } catch (e) { markPendingDelete(id); toast(e.message); }
+  } else {
+    markPendingDelete(id);
+  }
+  save();
   await log("Deleted " + u.serial); closeModal(); refresh();
 }
 function startTransfer(id) {
   const u = state.units.find(x => x.id === id);
-  showModal(`<h2>Transfer ${u.serial}</h2><p class="hint">Currently at ${hospitalOf(u.hospitalId).name}</p><div class="field"><label>Send to</label><select id="xfer-to">${hospOptions("")}</select></div><div class="field" style="margin-top:8px"><label>Reason</label><input id="xfer-why" placeholder="Case support / borrow"></div><button class="primary" onclick="doTransfer('${id}')">Move now</button><button class="secondary" onclick="openUnit('${id}')">Back</button>`);
+  showModal(`<h2>Transfer ${esc(u.serial)}</h2><p class="hint">Currently at ${esc(hospitalOf(u.hospitalId).name)}</p><div class="field"><label>Send to</label><select id="xfer-to">${hospOptions("")}</select></div><div class="field" style="margin-top:8px"><label>Reason</label><input id="xfer-why" placeholder="Case support / borrow"></div><button class="primary" onclick="doTransfer('${escJs(id)}')">Move now</button><button class="secondary" onclick="openUnit('${escJs(id)}')">Back</button>`);
 }
 async function doTransfer(id) {
   const u = state.units.find(x => x.id === id);
@@ -210,6 +366,7 @@ function fillScanFrom(text) {
 }
 let html5Qr;
 async function startCamera() {
+  window.__cameraReader = "legacy";
   const box = document.getElementById("reader"); box.style.display = "block";
   if ("BarcodeDetector" in window) {
     try {
@@ -243,6 +400,10 @@ async function addScanned() {
   const hospitalId = document.getElementById("scan-hosp").value;
   if (!serial || !sku || !hospitalId) { toast("Serial, SKU and hospital required"); return; }
   const existing = state.units.find(u => u.serial.toLowerCase() === serial.toLowerCase());
+  if (existing && existing.status !== "in-stock") {
+    const ok = confirm(serial + " is marked " + existing.status + " at " + hospitalOf(existing.hospitalId).name + ". Put it back in stock at " + hospitalOf(hospitalId).name + "?");
+    if (!ok) { toast("No change made"); return; }
+  }
   if (existing) {
     existing.hospitalId = hospitalId; existing.sku = sku;
     existing.expiry = document.getElementById("scan-exp").value;
@@ -257,7 +418,13 @@ async function addScanned() {
     await log("Received " + serial + " (" + catalogOf(sku).size + ") at " + hospitalOf(hospitalId).name);
     toast(cloud && cloud.live ? "On the shared list" : "Added on this phone");
   }
-  document.getElementById("scan-sn").value = ""; document.getElementById("scan-lot").value = ""; document.getElementById("scan-raw").textContent = ""; refresh();
+  document.getElementById("scan-sn").value = "";
+  document.getElementById("scan-lot").value = "";
+  document.getElementById("scan-exp").value = "";
+  document.getElementById("scan-raw-in").value = "";
+  document.getElementById("scan-raw").textContent = "";
+  if (typeof seenCodes !== "undefined" && seenCodes && seenCodes.clear) seenCodes.clear();
+  refresh();
 }
 async function addHospital() {
   const name = document.getElementById("new-hosp").value.trim(); if (!name) return;
@@ -273,9 +440,8 @@ function exportJSON() {
   download(new Blob([JSON.stringify({ exportedAt: new Date().toISOString(), specialist: state.settings.specialist, units: state.units, events: state.events, hospitalsExtra: state.hospitals.filter(h => h.custom) }, null, 2)], { type: "application/json" }), "teer-consignment-" + dateStamp() + ".json");
 }
 function exportCSV() {
-  const rows = [["hospital","city","sku","size","serial","lot","expiry","status","notes"]];
-  state.units.forEach(u => { const h = hospitalOf(u.hospitalId); const c = catalogOf(u.sku); rows.push([h.name, h.city, u.sku, c.size, u.serial, u.lot || "", u.expiry || "", u.status, (u.notes || "").replace(/,/g, ";")]); });
-  download(new Blob([rows.map(r => r.map(x => '"' + x + '"').join(",")).join("\n")], { type: "text/csv" }), "teer-consignment-" + dateStamp() + ".csv");
+  const csv = unitsToCsv(state.units, { hospital: hospitalOf, catalog: catalogOf });
+  download(new Blob([csv], { type: "text/csv" }), "teer-consignment-" + dateStamp() + ".csv");
 }
 function dateStamp() { return new Date().toISOString().slice(0, 10); }
 function download(blob, name) { const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = name; a.click(); }
@@ -287,12 +453,11 @@ function importFile(file) {
       else {
         const d = JSON.parse(reader.result);
         if (!Array.isArray(d.units)) throw new Error("No units array");
-        const bySn = new Map(state.units.map(u => [u.serial.toLowerCase(), u]));
-        (d.units || []).forEach(u => {
-          const key = (u.serial || "").toLowerCase(); if (!key) return;
-          if (bySn.has(key)) Object.assign(bySn.get(key), u);
-          else { u.id = u.id || crypto.randomUUID(); state.units.push(u); bySn.set(key, u); }
-        });
+        const touched = new Set((d.units || []).map(u => normSerial(u.serial)).filter(Boolean));
+        state.units = mergeImportedUnits(state.units, d.units || [], () => crypto.randomUUID());
+        if (!(cloud && cloud.live)) {
+          state.units.forEach(u => { if (touched.has(normSerial(u.serial))) markPendingUnit(u.id); });
+        }
         (d.hospitalsExtra || []).forEach(h => { if (!state.hospitals.find(x => x.id === h.id)) state.hospitals.push(h); });
         await log("Imported snapshot (" + d.units.length + " units)");
       }
@@ -301,27 +466,32 @@ function importFile(file) {
   };
   reader.readAsText(file);
 }
+const UNIT_STATUSES = ["in-stock", "used", "in-transit", "quarantine"];
 function importCSV(text) {
-  const lines = text.split(/\r?\n/).filter(Boolean);
-  const head = lines.shift().split(",").map(s => s.replace(/"/g, "").trim().toLowerCase());
-  const idx = (n) => head.indexOf(n);
+  const parsed = csvToUnitRows(text);
   let n = 0;
-  lines.forEach(line => {
-    const cols = line.split(",").map(s => s.replace(/^"|"$/g, "").trim());
-    const serial = cols[idx("serial")] || cols[idx("sn")]; if (!serial) return;
-    const hospName = cols[idx("hospital")] || "";
+  parsed.forEach(cols => {
+    const serial = cols.serial; if (!serial) return;
+    const hospName = cols.hospital || "";
     const hosp = state.hospitals.find(h => h.name.toLowerCase() === hospName.toLowerCase()) || state.hospitals.find(h => hospName && h.city && hospName.toLowerCase().includes(h.city.toLowerCase()));
-    const sku = cols[idx("sku")] || cols[idx("ref")] || "";
+    const sku = cols.sku || "";
     const existing = state.units.find(u => u.serial.toLowerCase() === serial.toLowerCase());
-    const row = { hospitalId: hosp ? hosp.id : state.settings.lastHospital, sku: sku || "CDS0802-XTW", serial, lot: cols[idx("lot")] || "", expiry: cols[idx("expiry")] || cols[idx("exp")] || "", status: (cols[idx("status")] || "in-stock").toLowerCase(), notes: cols[idx("notes")] || "", updatedAt: new Date().toISOString() };
-    if (existing) Object.assign(existing, row); else state.units.push(Object.assign({ id: crypto.randomUUID(), createdAt: new Date().toISOString() }, row));
+    const status = UNIT_STATUSES.includes(cols.status) ? cols.status : "in-stock";
+    const row = { hospitalId: hosp ? hosp.id : state.settings.lastHospital, sku: sku || "CDS0802-XTW", serial, lot: cols.lot || "", expiry: cols.expiry || "", status, notes: cols.notes || "", updatedAt: new Date().toISOString() };
+    if (existing) Object.assign(existing, row);
+    else state.units.push(Object.assign({ id: crypto.randomUUID(), createdAt: new Date().toISOString() }, row));
+    const saved = existing || state.units[state.units.length - 1];
+    if (!(cloud && cloud.live)) markPendingUnit(saved.id);
     n++;
   });
   log("Imported CSV (" + n + " rows)");
 }
 function resetDemo() {
   if (!confirm("Replace local data with the demo consignment?")) return;
-  state.units = demoUnits(); state.events = [{ at: new Date().toISOString(), text: "Demo consignment reloaded" }]; save(); refresh(); toast("Demo loaded");
+  state.units = demoUnits();
+  state.pars = demoPars();
+  state.events = [{ id: crypto.randomUUID(), at: new Date().toISOString(), text: "Demo consignment reloaded" }];
+  save(); refresh(); toast("Demo loaded");
 }
 function wipeAll() {
   if (!confirm("Erase every unit on this phone?")) return;
@@ -330,11 +500,12 @@ function wipeAll() {
 function showScreen(id) {
   document.querySelectorAll(".screen").forEach(s => s.classList.toggle("active", s.id === "screen-" + id));
   document.querySelectorAll(".nav button").forEach(b => b.classList.toggle("active", b.dataset.screen === id));
-  if (id !== "scan") stopCamera();
+  if (id !== "scan" && typeof window.stopCamera === "function") window.stopCamera();
   if (id === "home") renderHome();
   if (id === "find") renderFind();
   if (id === "hospitals") renderHospitals();
   if (id === "team" && typeof setLiveUi === "function") setLiveUi();
+  if (id === "team" && typeof renderAccess === "function") renderAccess();
 }
 function showModal(html) { document.getElementById("modal-body").innerHTML = html; document.getElementById("modal").classList.add("on"); }
 function closeModal() { document.getElementById("modal").classList.remove("on"); }
@@ -356,8 +527,8 @@ function bind() {
   document.getElementById("find-size").addEventListener("change", renderFind);
   document.getElementById("find-status").addEventListener("change", renderFind);
   document.getElementById("hosp-q").addEventListener("input", renderHospitals);
-  document.getElementById("btn-cam").addEventListener("click", startCamera);
-  document.getElementById("btn-cam-stop").addEventListener("click", stopCamera);
+  document.getElementById("btn-cam").addEventListener("click", () => window.startCamera());
+  document.getElementById("btn-cam-stop").addEventListener("click", () => window.stopCamera());
   document.getElementById("btn-add").addEventListener("click", addScanned);
   document.getElementById("scan-raw-in").addEventListener("change", (e) => fillScanFrom(e.target.value));
   document.getElementById("scan-photo").addEventListener("change", async (e) => {
@@ -398,6 +569,12 @@ function bind() {
   });
   document.getElementById("btn-signout").addEventListener("click", async () => { await signOutCloud(); toast("Signed out"); });
   document.getElementById("btn-push-up").addEventListener("click", pushLocalUp);
+  const earlier = document.getElementById("btn-earlier");
+  if (earlier) earlier.addEventListener("click", () => { if (typeof loadEarlierEvents === "function") loadEarlierEvents(); });
+  const reorderCsv = document.getElementById("btn-reorder-csv");
+  if (reorderCsv) reorderCsv.addEventListener("click", exportReorder);
+  const reorderShare = document.getElementById("btn-reorder-share");
+  if (reorderShare) reorderShare.addEventListener("click", shareReorder);
 }
 load(); fillSelects(); bind(); refresh(); initCloud();
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("./sw.js");

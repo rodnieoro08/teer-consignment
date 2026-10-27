@@ -2,21 +2,154 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     function signedIn() {
-      return request.auth != null;
+      return request.auth != null && request.auth.token.email != null;
+    }
+    function email() {
+      return request.auth.token.email.lower();
+    }
+    function memberPath(id) {
+      return /databases/$(database)/documents/members/$(id);
+    }
+    function isActiveMember() {
+      return signedIn()
+        && exists(memberPath(email()))
+        && get(memberPath(email())).data.active == true;
+    }
+    function isAdmin() {
+      return isActiveMember() && get(memberPath(email())).data.role == "admin";
+    }
+    function validMember() {
+      let data = request.resource.data;
+      return data.keys().hasOnly(["email", "name", "role", "active", "updatedAt", "updatedBy"])
+        && data.email is string
+        && data.email == data.email.lower()
+        && data.email.size() > 3
+        && data.email.size() < 120
+        && data.email.matches(".+@.+\\..+")
+        && data.name is string
+        && data.name.size() < 80
+        && data.role in ["admin", "member"]
+        && data.active is bool
+        && data.updatedAt is string
+        && data.updatedAt.size() < 40
+        && data.updatedBy is string
+        && data.updatedBy.size() < 80;
+    }
+
+    function validUnit(id) {
+      let data = request.resource.data;
+      return data.keys().hasOnly(["id", "hospitalId", "sku", "serial", "lot", "expiry", "status", "notes", "createdAt", "updatedAt", "updatedBy"])
+        && data.hospitalId is string && data.hospitalId.size() > 0 && data.hospitalId.size() < 80
+        && data.sku is string && data.sku.size() > 0 && data.sku.size() < 40
+        && data.serial is string && data.serial.size() > 0 && data.serial.size() < 80
+        && data.status in ["in-stock", "used", "in-transit", "quarantine"]
+        && data.lot is string && data.lot.size() < 40
+        && data.expiry is string && (data.expiry == "" || data.expiry.matches("^\\d{4}-\\d{2}-\\d{2}$"))
+        && data.notes is string && data.notes.size() < 500
+        && data.createdAt is string && data.createdAt.size() < 40
+        && data.updatedAt is string && data.updatedAt.size() < 40
+        && data.updatedBy is string && data.updatedBy.size() < 80
+        && data.id == id;
+    }
+
+    function validEvent(id) {
+      let data = request.resource.data;
+      return data.keys().hasOnly(["id", "at", "text", "by", "updatedAt", "updatedBy"])
+        && data.id == id
+        && data.at is string && data.at.size() > 8 && data.at.size() < 40
+        && data.text is string && data.text.size() > 0 && data.text.size() < 500
+        && data.by is string && data.by.size() < 80
+        && data.updatedAt is string && data.updatedAt.size() < 40
+        && data.updatedBy is string && data.updatedBy.size() < 80;
+    }
+
+    function validHospital(id) {
+      let data = request.resource.data;
+      return data.keys().hasOnly(["id", "name", "city", "region", "custom", "updatedAt", "updatedBy"])
+        && data.id == id
+        && data.name is string && data.name.size() > 0 && data.name.size() < 120
+        && data.city is string && data.city.size() < 80
+        && data.region is string && data.region.size() < 80
+        && data.custom == true
+        && data.updatedAt is string && data.updatedAt.size() < 40
+        && data.updatedBy is string && data.updatedBy.size() < 80;
+    }
+
+    function validPresence() {
+      let data = request.resource.data;
+      return data.keys().hasOnly(["name", "email", "ts"])
+        && data.name is string && data.name.size() < 80
+        && data.email is string && data.email.size() < 120
+        && data.ts is number;
+    }
+
+    match /members/{emailId} {
+      allow read: if isAdmin() || (signedIn() && emailId == email());
+      allow create: if validMember() && emailId == request.resource.data.email && (
+        (isAdmin())
+        || (
+          signedIn()
+          && emailId == email()
+          && request.resource.data.role == "admin"
+          && request.resource.data.active == true
+          && !exists(/databases/$(database)/documents/meta/bootstrap)
+        )
+      );
+      allow update: if isAdmin() && validMember() && emailId == request.resource.data.email
+        && (emailId != email() || (request.resource.data.role == "admin" && request.resource.data.active == true));
+      allow delete: if isAdmin() && emailId != email();
+    }
+
+    match /meta/bootstrap {
+      allow read: if signedIn();
+      allow create: if isAdmin()
+        && request.resource.data.keys().hasOnly(["claimed", "email", "at"])
+        && request.resource.data.claimed == true
+        && request.resource.data.email == email();
+      allow update, delete: if false;
     }
 
     match /units/{id} {
-      allow read, write: if signedIn();
+      allow read: if isActiveMember();
+      allow create, update: if isActiveMember() && validUnit(id);
+      allow delete: if isActiveMember();
     }
+
     match /events/{id} {
-      allow read, write: if signedIn();
+      allow read: if isActiveMember();
+      allow create: if isActiveMember() && validEvent(id);
+      allow update, delete: if false;
     }
+
     match /hospitals/{id} {
-      allow read, write: if signedIn();
+      allow read: if isActiveMember();
+      allow create, update: if isActiveMember() && validHospital(id);
+      allow delete: if isAdmin();
     }
+
+    function validPar(id) {
+      let data = request.resource.data;
+      return data.keys().hasOnly(["hospitalId", "family", "familyKey", "size", "par", "updatedAt", "updatedBy"])
+        && data.hospitalId is string && data.hospitalId.size() > 0 && data.hospitalId.size() < 80
+        && data.family is string && data.family.size() > 0 && data.family.size() < 40
+        && data.familyKey is string && data.familyKey.matches("^[a-z0-9-]{1,40}$")
+        && data.size in ["NT", "NTW", "XT", "XTW", "SGC"]
+        && data.par is int && data.par >= 0 && data.par <= 99
+        && data.updatedAt is string && data.updatedAt.size() < 40
+        && data.updatedBy is string && data.updatedBy.size() < 80
+        && id == data.hospitalId + "__" + data.familyKey + "__" + data.size;
+    }
+
+    match /pars/{id} {
+      allow read: if isActiveMember();
+      allow create, update: if isActiveMember() && validPar(id);
+      allow delete: if isActiveMember();
+    }
+
     match /presence/{id} {
-      allow read: if signedIn();
-      allow write: if signedIn() && request.auth.uid == id;
+      allow read: if isActiveMember();
+      allow create, update: if isActiveMember() && request.auth.uid == id && validPresence();
+      allow delete: if signedIn() && request.auth.uid == id;
     }
   }
 }

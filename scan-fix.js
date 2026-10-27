@@ -2,17 +2,25 @@
 const GTIN_TO_SKU = {
   "05415067050854": "CDS0802-NTW",
   "05415067050878": "CDS0802-NT",
-  "05415067105078": "CDS0602-NT"
+  "05415067105078": "CDS0602-NT",
+  // TriClip G4 EU MDR UDI-DIs from HAS opinion CNEDIMTS-7766, 17 June 2025.
+  "05415067045577": "TCDS0307-NT",
+  "05415067045492": "TCDS0307-NTW",
+  "05415067045607": "TCDS0307-XT",
+  "05415067045560": "TCDS0307-XTW",
+  "05415067045515": "TSGC0207",
+  // Accessories. SZR07, PLT07 and LFT07 also appear on that HAS table.
+  // SZR08 is the GUDID primary DI for catalog number SZR08.
+  "05415067035967": "SZR07",
+  "05415067035950": "PLT07",
+  "05415067035974": "LFT07",
+  "05415067046529": "SZR08"
 };
 let zxingReader = null;
 
-function yymmdd(s) {
-  if (!s || !/^\d{6}$/.test(s)) return "";
-  return "20" + s.slice(0, 2) + "-" + s.slice(2, 4) + "-" + s.slice(4, 6);
-}
 function skuFromText(raw) {
   const u = (raw || "").toUpperCase();
-  const m = u.match(/(CDS|SGC|MC)\d{4}(?:-(NTW|XTW|NT|XT))?/);
+  const m = u.match(/(TCDS|TSGC|CDS|SGC|TC|MC)\d{4}(?:-(NTW|XTW|NT|XT))?/);
   if (!m) return "";
   const hit = state.catalog.find(c => c.sku === m[0]);
   return hit ? hit.sku : m[0];
@@ -23,43 +31,19 @@ function skuFromGtin(gtin) {
   const g14 = g.padStart(14, "0").slice(-14);
   return GTIN_TO_SKU[g14] || GTIN_TO_SKU[g] || "";
 }
-function parseGs1Concat(s) {
-  const t = (s || "").replace(/[\u001d\x1d]/g, "").replace(/\s+/g, "").toUpperCase();
-  const out = { gtin: "", expiry: "", lot: "", serial: "" };
-  const g = t.match(/01(\d{14})/);
-  if (g) out.gtin = g[1];
-  const bundle = t.match(/17(\d{6})10(.+)(?:21|91)([A-Z0-9\-]{3,16})$/);
-  if (bundle) {
-    out.expiry = yymmdd(bundle[1]);
-    out.lot = bundle[2];
-    out.serial = bundle[3];
-    return out;
-  }
-  const e = t.match(/17(\d{6})/);
-  if (e) out.expiry = yymmdd(e[1]);
-  return out;
-}
 function parseUDI(text) {
   const raw = (text || "").trim();
-  const out = { serial: "", sku: "", expiry: "", lot: "", gtin: "", raw };
-  const compact = raw.replace(/\s+/g, "");
-  const hriRe = /\((\d{2})\)([^\(]+)/g;
-  let hm;
-  while ((hm = hriRe.exec(compact))) {
-    const ai = hm[1];
-    const val = hm[2].replace(/[^A-Za-z0-9\-]/g, "");
-    if (ai === "01") out.gtin = val.padStart(14, "0").slice(-14);
-    if (ai === "17") out.expiry = yymmdd(val);
-    if (ai === "10") out.lot = val;
-    if (ai === "21" || ai === "91") out.serial = val;
-  }
-  const c = parseGs1Concat(raw);
-  if (!out.gtin && c.gtin) out.gtin = c.gtin;
-  if (!out.expiry && c.expiry) out.expiry = c.expiry;
-  if (!out.lot && c.lot) out.lot = c.lot;
-  if (!out.serial && c.serial) out.serial = c.serial;
+  const parsed = (typeof parseBarcode === "function") ? parseBarcode(raw) : { serial: "", expiry: "", lot: "", gtin: "" };
+  const out = {
+    serial: parsed.serial || "",
+    sku: "",
+    expiry: parsed.expiry || "",
+    lot: parsed.lot || "",
+    gtin: parsed.gtin || "",
+    raw
+  };
   out.sku = skuFromText(raw) || skuFromGtin(out.gtin);
-  if (out.gtin && out.serial && out.serial.length >= 13) out.serial = "";
+  if (out.gtin && out.serial && out.serial === out.gtin) out.serial = "";
   return out;
 }
 function scanComplete() {
@@ -114,6 +98,7 @@ function ensureVideo() {
   return video;
 }
 async function startCamera() {
+  window.__cameraReader = "zxing";
   seenCodes.clear();
   const video = ensureVideo();
   toast("Hold still on the barcode under LOT");
@@ -202,6 +187,16 @@ async function readPhotoFile(file) {
   }
   toast("Could not read that photo. Take a closer shot of the barcode only");
 }
+function replaceClick(id, fn) {
+  const old = document.getElementById(id);
+  if (!old) return;
+  const neu = old.cloneNode(true);
+  old.parentNode.replaceChild(neu, old);
+  neu.addEventListener("click", (event) => {
+    event.preventDefault();
+    fn();
+  });
+}
 (function rebindPhoto() {
   const old = document.getElementById("scan-photo");
   if (!old) return;
@@ -209,3 +204,7 @@ async function readPhotoFile(file) {
   old.parentNode.replaceChild(neu, old);
   neu.addEventListener("change", (e) => readPhotoFile(e.target.files[0]));
 })();
+replaceClick("btn-cam", () => startCamera());
+replaceClick("btn-cam-stop", () => stopCamera());
+window.startCamera = startCamera;
+window.stopCamera = stopCamera;
