@@ -400,6 +400,7 @@ function showScreen(id) {
   if (id === "find") renderFind();
   if (id === "hospitals") renderHospitals();
   if (id === "team" && typeof setLiveUi === "function") setLiveUi();
+  if (id === "team" && typeof renderAccess === "function") renderAccess();
 }
 function showModal(html) { document.getElementById("modal-body").innerHTML = html; document.getElementById("modal").classList.add("on"); }
 function closeModal() { document.getElementById("modal").classList.remove("on"); }

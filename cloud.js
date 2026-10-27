@@ -11,7 +11,12 @@ const cloud = {
   unsub: [],
   authBound: false,
   localOnly: 0,
-  eventsHasMore: false
+  eventsHasMore: false,
+  email: "",
+  member: null,
+  members: [],
+  isMember: false,
+  isAdmin: false
 };
 let eventsCursor = null;
 let holdUnitSnaps = 0;
@@ -89,16 +94,31 @@ async function initCloud() {
       cloud.authBound = true;
       cloud.auth.onAuthStateChanged(async (user) => {
         cloud.user = user;
+        stopAccessWatch();
         if (user) {
           if (!state.settings.specialist && (user.displayName || user.email)) {
             state.settings.specialist = user.displayName || user.email.split("@")[0];
             saveLocalOnly();
           }
-          await startLive();
+          cloud.email = (user.email || "").trim().toLowerCase();
+          if (!cloud.email) {
+            stopLive();
+            cloud.isMember = false;
+            cloud.isAdmin = false;
+          } else {
+            watchMembership();
+          }
         } else {
+          cloud.email = "";
+          cloud.member = null;
+          cloud.members = [];
+          cloud.isMember = false;
+          cloud.isAdmin = false;
+          cloud._bootstrapTried = false;
           stopLive();
         }
         setLiveUi();
+        renderAccess();
       });
     }
     cloud.lastError = "";
@@ -212,12 +232,15 @@ async function flushEventUploads(uploads) {
       if (typeof clearPendingEvent === "function") clearPendingEvent(event.id);
       saveLocalOnly();
     } catch (e) {
-      eventUploadStamp.delete(event.id);
+      if (!e || e.code !== "permission-denied") eventUploadStamp.delete(event.id);
     }
   }
 }
 
+let startingLive = false;
 async function startLive() {
+  if (cloud.live || startingLive) return;
+  startingLive = true;
   stopLive();
   cloud.live = true;
   cloud._announcedLocal = false;
@@ -235,9 +258,13 @@ async function startLive() {
     cloud.people = rows.filter((person) => (person.ts || 0) > cutoff);
     setLiveUi();
   });
-  await beatPresence();
-  if (cloud._beat) clearInterval(cloud._beat);
-  cloud._beat = setInterval(beatPresence, 25000);
+  try {
+    await beatPresence();
+    if (cloud._beat) clearInterval(cloud._beat);
+    cloud._beat = setInterval(beatPresence, 25000);
+  } finally {
+    startingLive = false;
+  }
 }
 
 function listenEvents() {
@@ -284,6 +311,170 @@ function stopLive() {
   if (cloud._beat) clearInterval(cloud._beat);
 }
 
+function stopAccessWatch() {
+  if (cloud._memberDocUnsub) { try { cloud._memberDocUnsub(); } catch (_) {} cloud._memberDocUnsub = null; }
+  if (cloud._membersUnsub) { try { cloud._membersUnsub(); } catch (_) {} cloud._membersUnsub = null; }
+}
+
+function watchMembership() {
+  if (!cloud.db || !cloud.email || cloud._memberDocUnsub) return;
+  cloud._memberDocUnsub = cloud.db.collection("members").doc(cloud.email).onSnapshot(async (doc) => {
+    cloud.member = doc.exists ? doc.data() : null;
+    cloud.isMember = !!(cloud.member && cloud.member.active === true);
+    cloud.isAdmin = !!(cloud.isMember && cloud.member.role === "admin");
+    cloud.lastError = "";
+    if (cloud.isMember) {
+      if (!cloud.live) {
+        try { await startLive(); } catch (e) { cloud.lastError = e.message || "Could not open the shared list"; }
+      }
+      ensureBootstrap();
+    } else if (cloud.live) {
+      stopLive();
+    }
+    if (cloud.isAdmin) watchMemberList();
+    else if (cloud._membersUnsub) {
+      try { cloud._membersUnsub(); } catch (_) {}
+      cloud._membersUnsub = null;
+      cloud.members = [];
+    }
+    setLiveUi();
+    renderAccess();
+  }, (err) => {
+    cloud.isMember = false;
+    cloud.isAdmin = false;
+    if (cloud.live) stopLive();
+    cloud.lastError = err.code === "permission-denied"
+      ? "Firestore refused the team list. Publish firestore.rules from this repo, then claim the first admin seat or ask an admin to add your email."
+      : (err.message || "Could not read the team list");
+    setLiveUi();
+    renderAccess();
+  });
+}
+
+function watchMemberList() {
+  if (!cloud.db || cloud._membersUnsub) return;
+  cloud._membersUnsub = cloud.db.collection("members").onSnapshot((snap) => {
+    const rows = [];
+    snap.forEach((doc) => rows.push(Object.assign({ id: doc.id }, doc.data())));
+    rows.sort((a, b) => String(a.email || "").localeCompare(String(b.email || "")));
+    cloud.members = rows;
+    renderAccess();
+  }, (err) => {
+    cloud.lastError = err.message || "Could not list the team";
+    setLiveUi();
+  });
+}
+
+async function ensureBootstrap() {
+  if (!cloud.isAdmin || !cloud.email || cloud._bootstrapTried) return;
+  cloud._bootstrapTried = true;
+  try {
+    const doc = await cloud.db.collection("meta").doc("bootstrap").get();
+    if (doc.exists) return;
+    await cloud.db.collection("meta").doc("bootstrap").set({
+      claimed: true,
+      email: cloud.email,
+      at: new Date().toISOString()
+    });
+  } catch (_) {}
+}
+
+function accessPayload(email, name, role) {
+  return {
+    email,
+    name: String(name || "").slice(0, 79),
+    role: role === "admin" ? "admin" : "member",
+    active: true,
+    updatedAt: new Date().toISOString(),
+    updatedBy: whoName().slice(0, 79)
+  };
+}
+
+async function claimAdmin() {
+  if (!cloud.db || !cloud.email) { toast("Sign in with an email address first"); return; }
+  try {
+    await cloud.db.collection("members").doc(cloud.email).set(accessPayload(cloud.email, whoName(), "admin"));
+    await cloud.db.collection("meta").doc("bootstrap").set({
+      claimed: true,
+      email: cloud.email,
+      at: new Date().toISOString()
+    });
+    toast("You are the first admin. Add the rest of the team.");
+  } catch (e) {
+    toast(e.message || "Could not claim admin. Publish the rules, or ask the existing admin to add you.");
+  }
+}
+
+async function addMember() {
+  const email = (document.getElementById("member-email").value || "").trim().toLowerCase();
+  const name = (document.getElementById("member-name").value || "").trim();
+  const role = document.getElementById("member-role").value;
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { toast("Enter a valid email"); return; }
+  try {
+    await cloud.db.collection("members").doc(email).set(accessPayload(email, name, role));
+    document.getElementById("member-email").value = "";
+    document.getElementById("member-name").value = "";
+    toast("Added " + email);
+  } catch (e) {
+    toast(e.message || "Could not add that email");
+  }
+}
+
+async function removeMember(email) {
+  if (!email || email === cloud.email) return;
+  if (!confirm("Remove " + email + " from the team list? They will lose the shared stock list.")) return;
+  try {
+    await cloud.db.collection("members").doc(email).delete();
+    toast("Removed " + email);
+  } catch (e) {
+    toast(e.message || "Could not remove that email");
+  }
+}
+
+function renderAccess() {
+  const status = document.getElementById("access-status");
+  const actions = document.getElementById("access-actions");
+  if (!status || !actions) return;
+  if (!cloud.user) {
+    status.textContent = "Sign in first. Creating a login does not grant access. An admin adds the email to the team list.";
+    actions.innerHTML = "";
+    return;
+  }
+  if (!cloud.email) {
+    status.textContent = "This login has no email address, so it cannot be matched to the team list.";
+    actions.innerHTML = "";
+    return;
+  }
+  if (cloud.lastError && !cloud.isMember) {
+    status.textContent = cloud.lastError;
+  } else if (!cloud.isMember) {
+    status.textContent = cloud.email + " is not on the team list. If you are setting Firebase up, claim the first admin seat once, before anyone else. Otherwise ask an admin to add this email.";
+  } else if (!cloud.isAdmin) {
+    status.textContent = "You are on the team list as " + cloud.email + ".";
+  } else {
+    status.textContent = "You are an admin. Add each specialist's email before they sign in. They still create their own login.";
+  }
+  if (!cloud.isMember) {
+    actions.innerHTML = cloud.email ? `<button class="primary" id="btn-claim-admin" type="button">Claim first admin</button>` : "";
+    const claim = document.getElementById("btn-claim-admin");
+    if (claim) claim.addEventListener("click", claimAdmin);
+    return;
+  }
+  if (!cloud.isAdmin) {
+    actions.innerHTML = "";
+    return;
+  }
+  const rows = (cloud.members || []).map((member) => {
+    const self = member.email === cloud.email;
+    return `<div class="row"><div><div class="t">${esc(member.email)}</div><div class="m">${esc(member.name || "No name")} · ${esc(member.role || "member")}${member.active === false ? " · inactive" : ""}</div></div></div>${self ? "" : `<button class="danger" type="button" data-remove-member="${esc(member.email)}">Remove</button>`}`;
+  }).join("");
+  actions.innerHTML = `<div class="field"><label>Email</label><input id="member-email" type="email" placeholder="name@company.com" autocomplete="off"></div><div class="grid-2" style="margin-top:8px"><div class="field"><label>Name</label><input id="member-name" placeholder="Initials"></div><div class="field"><label>Role</label><select id="member-role"><option value="member">Member</option><option value="admin">Admin</option></select></div></div><button class="primary" id="btn-add-member" type="button">Add to team list</button><div style="margin-top:12px">${rows || `<div class="empty">No one else yet</div>`}</div>`;
+  document.getElementById("btn-add-member").addEventListener("click", addMember);
+  actions.querySelectorAll("[data-remove-member]").forEach((button) => {
+    button.addEventListener("click", () => removeMember(button.getAttribute("data-remove-member")));
+  });
+}
+
 async function beatPresence() {
   if (!cloud.live || !cloud.user) return;
   await cloud.db.collection("presence").doc(cloud.user.uid).set({
@@ -293,21 +484,52 @@ async function beatPresence() {
   }, { merge: true });
 }
 
-function strip(obj) {
-  const out = {};
-  Object.keys(obj || {}).forEach((key) => {
-    if (obj[key] !== undefined) out[key] = obj[key];
+const CLOUD_FIELDS = {
+  units: ["id", "hospitalId", "sku", "serial", "lot", "expiry", "status", "notes", "createdAt", "updatedAt", "updatedBy"],
+  events: ["id", "at", "text", "by", "updatedAt", "updatedBy"],
+  hospitals: ["id", "name", "city", "region", "custom", "updatedAt", "updatedBy"]
+};
+
+function shapeForCloud(col, id, data) {
+  const allowed = CLOUD_FIELDS[col];
+  const now = new Date().toISOString();
+  const source = Object.assign({}, data, {
+    id,
+    updatedAt: now,
+    updatedBy: whoName().slice(0, 79)
   });
-  return out;
+  if (col === "units") {
+    source.lot = String(source.lot || "").slice(0, 39);
+    source.expiry = /^\d{4}-\d{2}-\d{2}$/.test(source.expiry || "") ? source.expiry : "";
+    source.notes = String(source.notes || "").slice(0, 499);
+    source.hospitalId = String(source.hospitalId || "").slice(0, 79);
+    source.sku = String(source.sku || "").slice(0, 39);
+    source.serial = String(source.serial || "").slice(0, 79);
+    source.createdAt = String(source.createdAt || now).slice(0, 39);
+    if (!["in-stock", "used", "in-transit", "quarantine"].includes(source.status)) source.status = "in-stock";
+  }
+  if (col === "events") {
+    source.at = String(source.at || now).slice(0, 39);
+    source.text = String(source.text || "").slice(0, 499);
+    source.by = String(source.by || "").slice(0, 79);
+  }
+  if (col === "hospitals") {
+    source.name = String(source.name || "").slice(0, 119);
+    source.city = String(source.city || "").slice(0, 79);
+    source.region = String(source.region || "").slice(0, 79);
+    source.custom = true;
+  }
+  const payload = {};
+  (allowed || Object.keys(source)).forEach((key) => {
+    if (source[key] !== undefined) payload[key] = source[key];
+  });
+  return payload;
 }
 
 async function cloudUpsert(col, id, data) {
   saveLocalOnly();
   if (!cloud.live) return;
-  const payload = strip(Object.assign({}, data, {
-    updatedAt: new Date().toISOString(),
-    updatedBy: whoName()
-  }));
+  const payload = shapeForCloud(col, id, data);
   await cloud.db.collection(col).doc(id).set(payload, { merge: true });
 }
 async function cloudDelete(col, id) {
@@ -346,6 +568,9 @@ function setLiveUi() {
     if (cloud.live && cloud.user) {
       pill.textContent = "Live";
       pill.className = "pill";
+    } else if (cloud.user && !cloud.isMember) {
+      pill.textContent = "Not on team list";
+      pill.className = "pill bad";
     } else if (cfg) {
       pill.textContent = "Sign in for live";
       pill.className = "pill warn";
@@ -360,6 +585,8 @@ function setLiveUi() {
       if (cloud.localOnly) {
         status.textContent += " " + cloud.localOnly + " units are only on this phone. Use Upload this phone to the shared list before you rely on the cloud copy.";
       }
+    } else if (cloud.user && !cloud.isMember) {
+      status.textContent = "Signed in as " + (cloud.email || cloud.user.email || "this account") + ", but this email is not on the team list yet.";
     } else if (cfg && cloud.auth) {
       status.textContent = "Firebase is configured. Sign in so edits reach the rest of the team.";
     } else {

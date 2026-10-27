@@ -153,13 +153,18 @@
       </div>
       <div class="card">
         <h2>2. Sign in</h2>
-        <p class="hint">Each specialist uses their own email. Create accounts only for the UK TEER team.</p>
+        <p class="hint">Each specialist uses their own email. Creating a login does not grant access. An admin must add that email to the team list first.</p>
         <div class="field"><label>Email</label><input id="fb-email" type="email" placeholder="you@abbott.com" autocomplete="username"></div>
         <div class="field" style="margin-top:8px"><label>Password</label><input id="fb-pass" type="password" autocomplete="current-password"></div>
         <button class="primary" id="btn-signin" type="button">Sign in</button>
-        <button class="secondary" id="btn-signup" type="button">Create team account</button>
+        <button class="secondary" id="btn-signup" type="button">Create login</button>
         <button class="secondary" id="btn-google" type="button">Sign in with Google</button>
         <button class="danger" id="btn-signout" type="button">Sign out</button>
+      </div>
+      <div class="card" id="access-card">
+        <h2>Team list</h2>
+        <p class="hint" id="access-status">Sign in to see whether your email is on the team list.</p>
+        <div id="access-actions"></div>
       </div>
       <div class="card">
         <h2>Seed / backup</h2>
