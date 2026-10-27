@@ -4,11 +4,12 @@ const state = {
   hospitals: HOSPITALS,
   catalog: CATALOG,
   units: [],
+  pars: [],
   events: [],
   settings: { specialist: "", team: "UK TEER", cloudUrl: "", lastHospital: "barts" }
 };
 function emptySync() {
-  return { pendingUnitIds: [], pendingDeleteIds: [], seenUnitIds: [], pendingEventIds: [] };
+  return { pendingUnitIds: [], pendingDeleteIds: [], seenUnitIds: [], pendingEventIds: [], pendingParIds: [], pendingParDeleteIds: [], seenParIds: [] };
 }
 function load() {
   state.sync = emptySync();
@@ -16,12 +17,14 @@ function load() {
     const raw = localStorage.getItem(KEY);
     if (!raw) {
       state.units = demoUnits();
+      state.pars = demoPars();
       state.events = [{ id: crypto.randomUUID(), at: new Date().toISOString(), text: "Demo consignment loaded. Replace with your real serials." }];
       save();
       return;
     }
     const d = JSON.parse(raw);
     state.units = d.units || [];
+    state.pars = d.pars || [];
     state.events = d.events || [];
     state.settings = Object.assign(state.settings, d.settings || {});
     state.sync = Object.assign(emptySync(), d.sync || {});
@@ -32,6 +35,7 @@ function load() {
     }
   } catch (e) {
     state.units = demoUnits();
+    state.pars = demoPars();
   }
   let stamped = false;
   state.events.forEach(e => {
@@ -63,6 +67,24 @@ function markPendingEvent(id) {
 function clearPendingEvent(id) {
   if (!state.sync) return;
   state.sync.pendingEventIds = state.sync.pendingEventIds.filter(item => item !== id);
+}
+function markPendingPar(id) {
+  if (!id || !state.sync) return;
+  state.sync.pendingParDeleteIds = state.sync.pendingParDeleteIds.filter(item => item !== id);
+  if (!state.sync.pendingParIds.includes(id)) state.sync.pendingParIds.push(id);
+}
+function clearPendingPar(id) {
+  if (!state.sync) return;
+  state.sync.pendingParIds = state.sync.pendingParIds.filter(item => item !== id);
+}
+function markPendingParDelete(id) {
+  if (!id || !state.sync) return;
+  clearPendingPar(id);
+  if (!state.sync.pendingParDeleteIds.includes(id)) state.sync.pendingParDeleteIds.push(id);
+}
+function clearPendingParDelete(id) {
+  if (!state.sync) return;
+  state.sync.pendingParDeleteIds = state.sync.pendingParDeleteIds.filter(item => item !== id);
 }
 async function saveUnitCloud(u) {
   if (!(cloud && cloud.live)) markPendingUnit(u.id);
@@ -122,21 +144,32 @@ function renderHome() {
   document.getElementById("k-hot").textContent = exp30.length;
   document.getElementById("k-exp").parentElement.className = "kpi" + (exp90.length ? " warn" : "");
   document.getElementById("k-hot").parentElement.className = "kpi" + (exp30.length ? " bad" : "");
-  const rows = state.hospitals.map(h => {
-    const c = countsByHospital(h.id);
-    if (!c.total) return "";
-    return `<tr><td>${esc(h.name)}<div class="tiny">${esc(h.city)}</div></td>${SIZES.map(s => `<td class="${c[s] ? "okn" : "zero"}">${c[s]}</td>`).join("")}</tr>`;
+  const matrix = MATRIX_FAMILIES.map(group => {
+    const body = state.hospitals.map(h => {
+      const cells = group.sizes.map(size => {
+        const have = countInStock(state.units, h.id, group.family, size, catalogOf);
+        const par = parAmount(state.pars, h.id, group.family, size);
+        return { have, par };
+      });
+      if (!cells.some(cell => cell.have || cell.par)) return "";
+      return `<tr><td>${esc(h.name)}<div class="tiny">${esc(h.city)}</div></td>${cells.map(cell => {
+        const cls = cell.have === 0 ? "zero" : (cell.par > 0 && cell.have < cell.par ? "below" : "okn");
+        const note = cell.par > 0 ? `<div class="tiny">${cell.have === 0 ? "at zero" : cell.have < cell.par ? "below " + cell.par : "par " + cell.par}</div>` : "";
+        return `<td class="${cls}">${cell.have}${note}</td>`;
+      }).join("")}</tr>`;
+    }).join("");
+    if (!body) return "";
+    return `<h3 class="matrix-family">${esc(group.family)}</h3><div class="matrix-scroll"><table class="matrix"><thead><tr><th>Hospital</th>${group.sizes.map(size => `<th>${esc(size)}</th>`).join("")}</tr></thead><tbody>${body}</tbody></table></div>`;
   }).join("");
-  document.getElementById("matrix-body").innerHTML = rows || `<tr><td colspan="6" class="empty">No stock yet</td></tr>`;
-  const alerts = [];
-  state.hospitals.forEach(h => {
-    const c = countsByHospital(h.id);
-    if (!c.total) return;
-    if (!c.XTW) alerts.push(esc(h.name) + " has no XTW");
-    if (!c.SGC) alerts.push(esc(h.name) + " has no SGC");
+  const matrixEl = document.getElementById("matrix");
+  if (matrixEl) matrixEl.innerHTML = matrix || `<div class="empty">No stock yet</div>`;
+  const deficits = reorderDeficits(state.hospitals, state.units, state.pars, catalogOf);
+  const alerts = deficits.slice(0, 8).map(line => {
+    const badge = line.atZero ? "At zero" : "Below par";
+    return esc(badge) + " · " + esc(line.hospital) + " · " + esc(line.family) + " " + esc(line.size) + " · " + line.have + " of " + line.par;
   });
-  exp30.forEach(u => alerts.push(esc(catalogOf(u.sku).size) + " " + esc(u.serial) + " at " + esc(hospitalOf(u.hospitalId).name) + " expires " + esc(u.expiry)));
-  document.getElementById("alerts").innerHTML = alerts.slice(0, 8).map(a => `<div class="flag-line">${a}</div>`).join("") || `<div class="empty">No gaps flagged</div>`;
+  exp30.forEach(u => alerts.push(esc(catalogOf(u.sku).family) + " " + esc(catalogOf(u.sku).size) + " " + esc(u.serial) + " at " + esc(hospitalOf(u.hospitalId).name) + " expires " + esc(u.expiry)));
+  document.getElementById("alerts").innerHTML = alerts.slice(0, 8).map(a => `<div class="flag-line">${a}</div>`).join("") || `<div class="empty">Nothing below par. Set par levels on a hospital to flag reorders.</div>`;
   document.getElementById("activity").innerHTML = state.events.slice(0, 8).map(e => `<div class="row"><div><div class="t">${esc(e.text)}</div><div class="m">${esc(new Date(e.at).toLocaleString("en-GB"))}${e.by ? " · " + esc(e.by) : ""}</div></div></div>`).join("") || `<div class="empty">No activity yet</div>`;
 }
 function renderFind() {
@@ -149,7 +182,7 @@ function renderFind() {
   if (size) units = units.filter(u => catalogOf(u.sku).size === size);
   if (q) units = units.filter(u => {
     const h = hospitalOf(u.hospitalId); const c = catalogOf(u.sku);
-    return [u.serial, u.sku, u.lot, c.label, c.size, h.name, h.city, h.region].join(" ").toLowerCase().includes(q);
+    return [u.serial, u.sku, u.lot, c.label, c.family, c.size, h.name, h.city, h.region].join(" ").toLowerCase().includes(q);
   });
   units.sort((a, b) => hospitalOf(a.hospitalId).name.localeCompare(hospitalOf(b.hospitalId).name));
   document.getElementById("find-results").innerHTML = units.map(unitCard).join("") || `<div class="empty">Nothing matches. Try XTW or a serial.</div>`;
@@ -167,7 +200,12 @@ function renderHospitals() {
   const q = (document.getElementById("hosp-q").value || "").trim().toLowerCase();
   document.getElementById("hosp-list").innerHTML = state.hospitals.filter(h => !q || [h.name, h.city, h.region].join(" ").toLowerCase().includes(q)).map(h => {
     const c = countsByHospital(h.id);
-    return `<div class="card hospital-card" onclick="openHospital('${escJs(h.id)}')"><div class="row" style="padding-top:0"><div><div class="t">${esc(h.name)}</div><div class="m">${esc(h.city)} · ${esc(h.region)}</div>${SIZES.map(s => `<span class="chip ${chipClass(s)}">${esc(s)} ${c[s]}</span>`).join("")}</div><div class="r"><b>${c.total}</b><div>in stock</div></div></div></div>`;
+    const families = MATRIX_FAMILIES.map(group => {
+      const n = group.sizes.reduce((sum, size) => sum + countInStock(state.units, h.id, group.family, size, catalogOf), 0);
+      return n ? esc(group.family) + " " + n : "";
+    }).filter(Boolean).join(" · ");
+    const short = reorderDeficits([h], state.units, state.pars, catalogOf).length;
+    return `<div class="card hospital-card" onclick="openHospital('${escJs(h.id)}')"><div class="row" style="padding-top:0"><div><div class="t">${esc(h.name)}</div><div class="m">${esc(h.city)} · ${esc(h.region)}</div><div class="tiny">${families || "No stock recorded"}</div>${short ? `<span class="chip used">${short} below par</span>` : ""}</div><div class="r"><b>${c.total}</b><div>in stock</div></div></div></div>`;
   }).join("");
 }
 function skuOptions(selected) {
@@ -180,7 +218,71 @@ function openHospital(id) {
   const h = hospitalOf(id);
   state.settings.lastHospital = id; save();
   const units = state.units.filter(u => u.hospitalId === id).sort((a, b) => a.status.localeCompare(b.status));
-  showModal(`<h2>${esc(h.name)}</h2><p class="hint">${esc(h.city)} · ${esc(h.region)}</p><button class="primary" onclick="prepScan('${escJs(id)}')">Scan into this hospital</button><div style="margin-top:12px">${units.map(unitCard).join("") || "<div class='empty'>No units recorded</div>"}</div><button class="secondary" onclick="closeModal()">Close</button>`);
+  showModal(`<h2>${esc(h.name)}</h2><p class="hint">${esc(h.city)} · ${esc(h.region)}</p><button class="primary" onclick="prepScan('${escJs(id)}')">Scan into this hospital</button><div style="margin-top:12px">${units.map(unitCard).join("") || "<div class='empty'>No units recorded</div>"}</div>${parEditor(id)}<button class="secondary" onclick="closeModal()">Close</button>`);
+}
+function parEditor(hospitalId) {
+  const blocks = MATRIX_FAMILIES.map(group => {
+    const open = group.sizes.some(size => parAmount(state.pars, hospitalId, group.family, size) > 0 || countInStock(state.units, hospitalId, group.family, size, catalogOf) > 0);
+    const fields = group.sizes.map(size => {
+      const have = countInStock(state.units, hospitalId, group.family, size, catalogOf);
+      const par = parAmount(state.pars, hospitalId, group.family, size);
+      return `<label class="par-row"><span>${esc(size)} <span class="tiny">in stock ${have}</span></span><input data-par-family="${esc(group.family)}" data-par-size="${esc(size)}" type="number" min="0" max="99" inputmode="numeric" value="${par}"></label>`;
+    }).join("");
+    return `<details class="par-block"${open ? " open" : ""}><summary>${esc(group.family)}</summary>${fields}</details>`;
+  }).join("");
+  return `<h2 class="matrix-family">Par levels</h2><p class="hint">How many of each size should be on the shelf. Delivery systems and bundles of the same size count together. 0 means this site does not stock that size. G4 and G5 stay separate, and TriClip is not mixed with MitraClip.</p>${blocks}<button class="primary" type="button" onclick="saveHospitalPars('${escJs(hospitalId)}')">Save par levels</button>`;
+}
+async function saveHospitalPars(hospitalId) {
+  const inputs = document.querySelectorAll("#modal-body [data-par-size]");
+  for (const input of inputs) {
+    const family = input.getAttribute("data-par-family");
+    const size = input.getAttribute("data-par-size");
+    let par = parseInt(input.value, 10);
+    if (!Number.isFinite(par) || par < 0) par = 0;
+    if (par > 99) par = 99;
+    const id = parDocId(hospitalId, family, size);
+    const existing = state.pars.find(item => item.id === id);
+    if (par === 0) {
+      if (existing) {
+        state.pars = state.pars.filter(item => item.id !== id);
+        markPendingParDelete(id);
+        if (cloud && cloud.live && typeof cloudDelete === "function") {
+          try { await cloudDelete("pars", id); clearPendingParDelete(id); } catch (e) { toast(e.message); }
+        }
+      }
+      continue;
+    }
+    const row = { id, hospitalId, family, familyKey: familyKey(family), size, par, updatedAt: new Date().toISOString() };
+    if (existing) Object.assign(existing, row);
+    else state.pars.push(row);
+    if (!(cloud && cloud.live)) markPendingPar(id);
+    if (cloud && cloud.live && typeof cloudUpsert === "function") {
+      try { await cloudUpsert("pars", id, row); clearPendingPar(id); }
+      catch (e) { markPendingPar(id); toast(e.message); }
+    }
+  }
+  save();
+  closeModal();
+  refresh();
+  toast(cloud && cloud.live ? "Par levels saved for the team" : "Par levels saved on this phone");
+}
+function exportReorder() {
+  const lines = reorderDeficits(state.hospitals, state.units, state.pars, catalogOf);
+  const rows = [["hospital", "family", "size", "in stock", "par", "short", "at zero"]];
+  lines.forEach(line => rows.push([line.hospital, line.family, line.size, String(line.have), String(line.par), String(line.short), line.atZero ? "yes" : "no"]));
+  download(new Blob([toCsv(rows)], { type: "text/csv" }), "teer-reorder-" + dateStamp() + ".csv");
+}
+async function shareReorder() {
+  const lines = reorderDeficits(state.hospitals, state.units, state.pars, catalogOf);
+  const text = lines.length
+    ? lines.map(line => line.hospital + ": " + line.family + " " + line.size + " has " + line.have + ", par " + line.par + ", short " + line.short).join("\n")
+    : "Nothing is below par.";
+  if (navigator.share) {
+    try { await navigator.share({ title: "TEER reorder list", text }); return; }
+    catch (e) { if (e && e.name === "AbortError") return; }
+  }
+  exportReorder();
+  toast("Reorder list downloaded");
 }
 function openUnit(id) {
   const u = state.units.find(x => x.id === id); if (!u) return;
@@ -386,7 +488,10 @@ function importCSV(text) {
 }
 function resetDemo() {
   if (!confirm("Replace local data with the demo consignment?")) return;
-  state.units = demoUnits(); state.events = [{ at: new Date().toISOString(), text: "Demo consignment reloaded" }]; save(); refresh(); toast("Demo loaded");
+  state.units = demoUnits();
+  state.pars = demoPars();
+  state.events = [{ id: crypto.randomUUID(), at: new Date().toISOString(), text: "Demo consignment reloaded" }];
+  save(); refresh(); toast("Demo loaded");
 }
 function wipeAll() {
   if (!confirm("Erase every unit on this phone?")) return;
@@ -466,6 +571,10 @@ function bind() {
   document.getElementById("btn-push-up").addEventListener("click", pushLocalUp);
   const earlier = document.getElementById("btn-earlier");
   if (earlier) earlier.addEventListener("click", () => { if (typeof loadEarlierEvents === "function") loadEarlierEvents(); });
+  const reorderCsv = document.getElementById("btn-reorder-csv");
+  if (reorderCsv) reorderCsv.addEventListener("click", exportReorder);
+  const reorderShare = document.getElementById("btn-reorder-share");
+  if (reorderShare) reorderShare.addEventListener("click", shareReorder);
 }
 load(); fillSelects(); bind(); refresh(); initCloud();
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("./sw.js");

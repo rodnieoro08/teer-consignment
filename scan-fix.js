@@ -2,13 +2,25 @@
 const GTIN_TO_SKU = {
   "05415067050854": "CDS0802-NTW",
   "05415067050878": "CDS0802-NT",
-  "05415067105078": "CDS0602-NT"
+  "05415067105078": "CDS0602-NT",
+  // TriClip G4 EU MDR UDI-DIs from HAS opinion CNEDIMTS-7766, 17 June 2025.
+  "05415067045577": "TCDS0307-NT",
+  "05415067045492": "TCDS0307-NTW",
+  "05415067045607": "TCDS0307-XT",
+  "05415067045560": "TCDS0307-XTW",
+  "05415067045515": "TSGC0207",
+  // Accessories. SZR07, PLT07 and LFT07 also appear on that HAS table.
+  // SZR08 is the GUDID primary DI for catalog number SZR08.
+  "05415067035967": "SZR07",
+  "05415067035950": "PLT07",
+  "05415067035974": "LFT07",
+  "05415067046529": "SZR08"
 };
 let zxingReader = null;
 
 function skuFromText(raw) {
   const u = (raw || "").toUpperCase();
-  const m = u.match(/(CDS|SGC|MC)\d{4}(?:-(NTW|XTW|NT|XT))?/);
+  const m = u.match(/(TCDS|TSGC|CDS|SGC|TC|MC)\d{4}(?:-(NTW|XTW|NT|XT))?/);
   if (!m) return "";
   const hit = state.catalog.find(c => c.sku === m[0]);
   return hit ? hit.sku : m[0];

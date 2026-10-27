@@ -1,4 +1,4 @@
-const CACHE = "teer-consign-v10";
+const CACHE = "teer-consign-v11";
 const ASSETS = [
   "./",
   "./index.html",
@@ -11,6 +11,7 @@ const ASSETS = [
   "./csv.js",
   "./gs1.js",
   "./sync-merge.js",
+  "./pars.js",
   "./manifest.json",
   "./icon.svg",
   "./apple-touch-icon.png",

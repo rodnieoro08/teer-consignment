@@ -127,6 +127,25 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
+    function validPar(id) {
+      let data = request.resource.data;
+      return data.keys().hasOnly(["hospitalId", "family", "familyKey", "size", "par", "updatedAt", "updatedBy"])
+        && data.hospitalId is string && data.hospitalId.size() > 0 && data.hospitalId.size() < 80
+        && data.family is string && data.family.size() > 0 && data.family.size() < 40
+        && data.familyKey is string && data.familyKey.matches("^[a-z0-9-]{1,40}$")
+        && data.size in ["NT", "NTW", "XT", "XTW", "SGC"]
+        && data.par is int && data.par >= 0 && data.par <= 99
+        && data.updatedAt is string && data.updatedAt.size() < 40
+        && data.updatedBy is string && data.updatedBy.size() < 80
+        && id == data.hospitalId + "__" + data.familyKey + "__" + data.size;
+    }
+
+    match /pars/{id} {
+      allow read: if isActiveMember();
+      allow create, update: if isActiveMember() && validPar(id);
+      allow delete: if isActiveMember();
+    }
+
     match /presence/{id} {
       allow read: if isActiveMember();
       allow create, update: if isActiveMember() && request.auth.uid == id && validPresence();

@@ -20,9 +20,31 @@ const CATALOG = [
   { sku: "MC0707-NTW",  family: "MitraClip G4", kind: "BUNDLE", size: "NTW", label: "G4 NTW bundle (CDS + SGC)" },
   { sku: "MC0707-XT",   family: "MitraClip G4", kind: "BUNDLE", size: "XT",  label: "G4 XT bundle (CDS + SGC)" },
   { sku: "MC0707-XTW",  family: "MitraClip G4", kind: "BUNDLE", size: "XTW", label: "G4 XTW bundle (CDS + SGC)" },
+  { sku: "TCDS0307-NT",  family: "TriClip G4", kind: "CDS", size: "NT",  label: "TriClip G4 NT delivery system" },
+  { sku: "TCDS0307-NTW", family: "TriClip G4", kind: "CDS", size: "NTW", label: "TriClip G4 NTW delivery system" },
+  { sku: "TCDS0307-XT",  family: "TriClip G4", kind: "CDS", size: "XT",  label: "TriClip G4 XT delivery system" },
+  { sku: "TCDS0307-XTW", family: "TriClip G4", kind: "CDS", size: "XTW", label: "TriClip G4 XTW delivery system" },
+  { sku: "TSGC0207",     family: "TriClip G4", kind: "SGC", size: "SGC", label: "TriClip G4 steerable guide catheter" },
+  { sku: "TC0307-NT",    family: "TriClip G4", kind: "BUNDLE", size: "NT",  label: "TriClip G4 NT bundle (delivery system + guide)" },
+  { sku: "TC0307-NTW",   family: "TriClip G4", kind: "BUNDLE", size: "NTW", label: "TriClip G4 NTW bundle (delivery system + guide)" },
+  { sku: "TC0307-XT",    family: "TriClip G4", kind: "BUNDLE", size: "XT",  label: "TriClip G4 XT bundle (delivery system + guide)" },
+  { sku: "TC0307-XTW",   family: "TriClip G4", kind: "BUNDLE", size: "XTW", label: "TriClip G4 XTW bundle (delivery system + guide)" },
+  { sku: "TCDS0802-NT",  family: "TriClip G5", kind: "CDS", size: "NT",  label: "TriClip G5 NT delivery system" },
+  { sku: "TCDS0802-NTW", family: "TriClip G5", kind: "CDS", size: "NTW", label: "TriClip G5 NTW delivery system" },
+  { sku: "TCDS0802-XT",  family: "TriClip G5", kind: "CDS", size: "XT",  label: "TriClip G5 XT delivery system" },
+  { sku: "TCDS0802-XTW", family: "TriClip G5", kind: "CDS", size: "XTW", label: "TriClip G5 XTW delivery system" },
+  { sku: "TSGC0802",     family: "TriClip G5", kind: "SGC", size: "SGC", label: "TriClip G5 steerable guide catheter" },
+  { sku: "TC0802-NT",    family: "TriClip G5", kind: "BUNDLE", size: "NT",  label: "TriClip G5 NT bundle (delivery system + guide)" },
+  { sku: "TC0802-NTW",   family: "TriClip G5", kind: "BUNDLE", size: "NTW", label: "TriClip G5 NTW bundle (delivery system + guide)" },
+  { sku: "TC0802-XT",    family: "TriClip G5", kind: "BUNDLE", size: "XT",  label: "TriClip G5 XT bundle (delivery system + guide)" },
+  { sku: "TC0802-XTW",   family: "TriClip G5", kind: "BUNDLE", size: "XTW", label: "TriClip G5 XTW bundle (delivery system + guide)" },
   { sku: "SZR07ST", family: "Accessory", kind: "ACC", size: "ACC", label: "Stabilizer" },
   { sku: "LFT07ST", family: "Accessory", kind: "ACC", size: "ACC", label: "Lift" },
-  { sku: "PLT07ST", family: "Accessory", kind: "ACC", size: "ACC", label: "Support plate" }
+  { sku: "PLT07ST", family: "Accessory", kind: "ACC", size: "ACC", label: "Support plate" },
+  { sku: "SZR07", family: "Accessory", kind: "ACC", size: "ACC", label: "Stabilizer SZR07" },
+  { sku: "LFT07", family: "Accessory", kind: "ACC", size: "ACC", label: "Lift LFT07" },
+  { sku: "PLT07", family: "Accessory", kind: "ACC", size: "ACC", label: "Support plate PLT07" },
+  { sku: "SZR08", family: "Accessory", kind: "ACC", size: "ACC", label: "Stabilizer SZR08" }
 ];
 
 const HOSPITALS = [
@@ -82,6 +104,9 @@ function demoUnits() {
     add("oxford", "CDS0802-NT", "G5NT060011", "2027-03-03"),
     add("oxford", "SGC0802", "G5SGC60021", "2027-03-03"),
     add("qehb", "CDS0802-XTW", "G5XTW70001", "2026-10-02"),
-    add("lhch", "CDS0802-NTW", "G5NTW80001", "2027-02-14")
+    add("lhch", "CDS0802-NTW", "G5NTW80001", "2027-02-14"),
+    add("papworth", "TCDS0307-XTW", "TCXTW90001", "2027-09-01"),
+    add("papworth", "TSGC0207", "TCSGC90011", "2027-09-01"),
+    add("barts", "TCDS0802-NTW", "TC5NTW91001", "2027-11-01")
   ];
 }

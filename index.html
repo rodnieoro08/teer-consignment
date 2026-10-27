@@ -46,19 +46,15 @@
       </div>
       <div class="card">
         <h2>National clip matrix</h2>
-        <p class="hint">In-stock units only. Red zero = nothing on the shelf in this app.</p>
-        <div style="overflow:auto">
-          <table class="matrix">
-            <thead>
-              <tr><th>Hospital</th><th>NT</th><th>NTW</th><th>XT</th><th>XTW</th><th>SGC</th></tr>
-            </thead>
-            <tbody id="matrix-body"></tbody>
-          </table>
-        </div>
+        <p class="hint">In-stock units only. MitraClip and TriClip, and G4 and G5, are separate. A red zero is an empty shelf. Amber is below the par you set.</p>
+        <div id="matrix"></div>
       </div>
       <div class="card">
-        <h2>Gaps & expiry</h2>
+        <h2>Reorder & expiry</h2>
+        <p class="hint">Set par levels on a hospital. This list is what to send back when a site is short.</p>
         <div id="alerts"></div>
+        <button class="secondary" id="btn-reorder-csv" type="button">Export reorder list</button>
+        <button class="secondary" id="btn-reorder-share" type="button">Share reorder list</button>
       </div>
       <div class="card">
         <h2>Activity</h2>
@@ -221,6 +217,7 @@
   <script src="./csv.js"></script>
   <script src="./gs1.js"></script>
   <script src="./sync-merge.js"></script>
+  <script src="./pars.js"></script>
   <script src="./cloud.js"></script>
   <script src="./app.js"></script>
   <script src="./scan-fix.js"></script>

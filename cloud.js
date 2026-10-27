@@ -21,9 +21,13 @@ const cloud = {
 let eventsCursor = null;
 let holdUnitSnaps = 0;
 let queuedUnitRows = null;
+let holdParSnaps = 0;
+let queuedParRows = null;
 const unitUploadStamp = new Map();
 const unitDeleteAttempt = new Set();
 const eventUploadStamp = new Set();
+const parUploadStamp = new Map();
+const parDeleteAttempt = new Set();
 
 function loadFbConfig() {
   try { return JSON.parse(localStorage.getItem(FB_KEY) || "null"); } catch (_) { return null; }
@@ -135,15 +139,16 @@ function saveLocalOnly() {
     events: state.events.slice(0, 300),
     settings: state.settings,
     hospitalsExtra: state.hospitals.filter((h) => h.custom),
-    sync: state.sync || { pendingUnitIds: [], pendingDeleteIds: [], seenUnitIds: [], pendingEventIds: [] }
+    pars: state.pars || [],
+    sync: state.sync || emptySync()
   }));
 }
 
 function ensureSync() {
   if (!state.sync) {
-    state.sync = { pendingUnitIds: [], pendingDeleteIds: [], seenUnitIds: [], pendingEventIds: [] };
+    state.sync = emptySync();
   }
-  ["pendingUnitIds", "pendingDeleteIds", "seenUnitIds", "pendingEventIds"].forEach((key) => {
+  ["pendingUnitIds", "pendingDeleteIds", "seenUnitIds", "pendingEventIds", "pendingParIds", "pendingParDeleteIds", "seenParIds"].forEach((key) => {
     if (!Array.isArray(state.sync[key])) state.sync[key] = [];
   });
 }
@@ -191,6 +196,64 @@ async function flushUnitUploads(uploads) {
       const queued = queuedUnitRows;
       queuedUnitRows = null;
       applyUnitSnapshot(queued);
+    }
+  }
+}
+
+function applyParSnapshot(rows) {
+  if (holdParSnaps) {
+    queuedParRows = rows;
+    return;
+  }
+  ensureSync();
+  const merged = mergeParLists(state.pars || [], rows, state.sync);
+  state.pars = merged.pars;
+  state.sync.seenParIds = rows.map((row) => row.id).filter(Boolean);
+  saveLocalOnly();
+  refresh();
+  flushParUploads(merged.uploads);
+  flushParDeletes(merged.deletes);
+}
+
+async function flushParUploads(uploads) {
+  if (!uploads || !uploads.length || !cloud.live) return;
+  holdParSnaps += 1;
+  try {
+    for (const par of uploads) {
+      const stamp = (par.id || "") + "|" + (par.par || "") + "|" + (par.updatedAt || "");
+      if (parUploadStamp.get(par.id) === stamp) continue;
+      parUploadStamp.set(par.id, stamp);
+      try {
+        await cloudUpsert("pars", par.id, par);
+        if (typeof clearPendingPar === "function") clearPendingPar(par.id);
+        saveLocalOnly();
+      } catch (e) {
+        parUploadStamp.delete(par.id);
+        toast(e.message || "Could not upload a par level");
+      }
+    }
+  } finally {
+    holdParSnaps -= 1;
+    if (!holdParSnaps && queuedParRows) {
+      const queued = queuedParRows;
+      queuedParRows = null;
+      applyParSnapshot(queued);
+    }
+  }
+}
+
+async function flushParDeletes(ids) {
+  if (!ids || !ids.length || !cloud.live) return;
+  for (const id of ids) {
+    if (parDeleteAttempt.has(id)) continue;
+    parDeleteAttempt.add(id);
+    try {
+      await cloudDelete("pars", id);
+      if (typeof clearPendingParDelete === "function") clearPendingParDelete(id);
+      saveLocalOnly();
+    } catch (e) {
+      parDeleteAttempt.delete(id);
+      toast(e.message || "Could not delete a par level");
     }
   }
 }
@@ -253,6 +316,7 @@ async function startLive() {
     fillSelects();
     refresh();
   });
+  listenCol("pars", applyParSnapshot);
   listenCol("presence", (rows) => {
     const cutoff = Date.now() - 120000;
     cloud.people = rows.filter((person) => (person.ts || 0) > cutoff);
@@ -487,7 +551,8 @@ async function beatPresence() {
 const CLOUD_FIELDS = {
   units: ["id", "hospitalId", "sku", "serial", "lot", "expiry", "status", "notes", "createdAt", "updatedAt", "updatedBy"],
   events: ["id", "at", "text", "by", "updatedAt", "updatedBy"],
-  hospitals: ["id", "name", "city", "region", "custom", "updatedAt", "updatedBy"]
+  hospitals: ["id", "name", "city", "region", "custom", "updatedAt", "updatedBy"],
+  pars: ["hospitalId", "family", "familyKey", "size", "par", "updatedAt", "updatedBy"]
 };
 
 function shapeForCloud(col, id, data) {
@@ -518,6 +583,14 @@ function shapeForCloud(col, id, data) {
     source.city = String(source.city || "").slice(0, 79);
     source.region = String(source.region || "").slice(0, 79);
     source.custom = true;
+  }
+  if (col === "pars") {
+    source.hospitalId = String(source.hospitalId || "").slice(0, 79);
+    source.family = String(source.family || "").slice(0, 39);
+    source.familyKey = (typeof familyKey === "function" ? familyKey(source.family) : String(source.familyKey || "")).slice(0, 40);
+    source.size = String(source.size || "").slice(0, 8);
+    const par = parseInt(source.par, 10);
+    source.par = Number.isFinite(par) ? Math.max(0, Math.min(99, par)) : 0;
   }
   const payload = {};
   (allowed || Object.keys(source)).forEach((key) => {
@@ -628,9 +701,18 @@ async function pushLocalUp() {
     for (const hospital of state.hospitals.filter((item) => item.custom)) {
       await cloudUpsert("hospitals", hospital.id, hospital);
     }
+    for (const par of state.pars || []) {
+      await cloudUpsert("pars", par.id, par);
+      if (typeof clearPendingPar === "function") clearPendingPar(par.id);
+    }
+    for (const id of (state.sync.pendingParDeleteIds || []).slice()) {
+      await cloudDelete("pars", id);
+      if (typeof clearPendingParDelete === "function") clearPendingParDelete(id);
+    }
     cloud.localOnly = 0;
     saveLocalOnly();
-    toast("Uploaded " + count + " units to the shared list");
+    const parCount = (state.pars || []).length;
+    toast("Uploaded " + count + " units" + (parCount ? " and " + parCount + " par levels" : "") + " to the shared list");
     setLiveUi();
   } catch (e) {
     saveLocalOnly();

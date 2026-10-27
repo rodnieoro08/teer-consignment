@@ -52,7 +52,13 @@ After that, a scan or transfer on your phone appears on theirs within a second.
 
 Settings → Pages → Deploy from branch `main`, folder `/ (root)`.
 
+## TriClip and par levels
+
+The board keeps MitraClip G3, G4 and G5, and TriClip G4 and G5, in separate matrices. Delivery systems and bundles of the same size count together. Set a par on a hospital (0 means that size is not stocked there). Below-par and at-zero lines can be exported or shared. Par levels sync with the signed-in team.
+
+TriClip catalogue numbers are the EU MDR codes published by Abbott. Verified GTINs are mapped in `scan-fix.js`. TriClip G5 EU GTINs were not in the public sources used here, so those barcodes are not mapped.
+
 ## Files
 
-- `index.html` `app.js` `cloud.js` `data.js` `styles.css` `manifest.json` `sw.js` `icon.svg`
+- `index.html` `app.js` `cloud.js` `data.js` `pars.js` `gs1.js` `csv.js` `styles.css` `manifest.json` `sw.js` `icon.svg` `apple-touch-icon.png`
 - `firestore.rules` — paste into the Firebase console

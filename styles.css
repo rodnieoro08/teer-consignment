@@ -159,7 +159,14 @@ textarea { min-height: 72px; font-size: 14px; resize: vertical; }
 .matrix th:first-child, .matrix td:first-child { text-align: left; }
 .matrix th { color: var(--muted); font-size: 10px; text-transform: uppercase; }
 .zero { color: var(--red); font-weight: 700; }
+.below { color: var(--amber); font-weight: 700; }
 .okn { color: var(--green); font-weight: 700; }
+.matrix-family { margin: 12px 0 6px; font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--teal); }
+.matrix-scroll { overflow: auto; }
+.par-block { border-top: 1px solid var(--line); margin-top: 8px; padding-top: 8px; }
+.par-block summary { cursor: pointer; font-weight: 700; font-size: 14px; }
+.par-row { display: grid; grid-template-columns: 1fr 84px; gap: 8px; align-items: center; margin-top: 8px; font-size: 14px; }
+.par-row input { padding: 8px; }
 .file-btn {
   display: block; text-align: center; padding: 12px; border-radius: 12px;
   border: 1px dashed var(--line); color: var(--muted); font-size: 13px; background: var(--bg);
