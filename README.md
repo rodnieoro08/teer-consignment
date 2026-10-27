@@ -34,7 +34,7 @@ After that, a scan or transfer on your phone appears on theirs within a second. 
 - Signed-in users read and write `units`, `events` and extra hospitals.
 - Each edit stores who changed it.
 - Presence shows who is currently in the app.
-- The phone still keeps a local cache, so Find works in a basement; it syncs when the signal returns.
+- The phone keeps a local copy, so Find still works with no signal after the app has been opened online once. The service worker then serves the page, Firebase and the barcode reader from cache if the network does not answer within a few seconds. Signing in does not replace units that are only on this phone; use **Upload this phone to the shared list** to copy them up. Edits made while signed out are merged back when you are next online.
 - JSON / CSV export remains as a backup.
 
 ## What is private

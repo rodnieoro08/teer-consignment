@@ -9,7 +9,7 @@
   <title>TEER Consignment</title>
   <link rel="manifest" href="./manifest.json" />
   <link rel="stylesheet" href="./styles.css" />
-  <link rel="apple-touch-icon" href="./icon.svg" />
+  <link rel="apple-touch-icon" href="./apple-touch-icon.png" />
   <style>
     .flag-line { font-size: 13px; padding: 8px 0; border-bottom: 1px solid var(--line); color: #d7e6f2; }
     .flag-line:last-child { border-bottom: 0; }
@@ -63,6 +63,7 @@
       <div class="card">
         <h2>Activity</h2>
         <div id="activity"></div>
+        <button class="secondary" id="btn-earlier" type="button" style="display:none">Show earlier activity</button>
       </div>
     </section>
 
@@ -210,7 +211,11 @@
   <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
   <script src="https://unpkg.com/@zxing/library@0.21.3/umd/index.min.js"></script>
   <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+  <script src="./util.js"></script>
   <script src="./data.js"></script>
+  <script src="./csv.js"></script>
+  <script src="./gs1.js"></script>
+  <script src="./sync-merge.js"></script>
   <script src="./cloud.js"></script>
   <script src="./app.js"></script>
   <script src="./scan-fix.js"></script>
