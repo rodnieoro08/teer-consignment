@@ -154,9 +154,9 @@ textarea { min-height: 72px; font-size: 14px; resize: vertical; }
 }
 .empty { text-align: center; color: var(--muted); padding: 28px 12px; font-size: 13px; }
 .disclaimer { font-size: 11px; color: var(--muted); line-height: 1.45; margin-top: 8px; }
-.matrix { width: 100%; border-collapse: collapse; font-size: 11px; }
+.matrix { width: 100%; min-width: 520px; border-collapse: collapse; font-size: 11px; }
 .matrix th, .matrix td { padding: 7px 4px; text-align: center; border-bottom: 1px solid var(--line); }
-.matrix th:first-child, .matrix td:first-child { text-align: left; }
+.matrix th:first-child, .matrix td:first-child { text-align: left; min-width: 148px; }
 .matrix th { color: var(--muted); font-size: 10px; text-transform: uppercase; }
 .zero { color: var(--red); font-weight: 700; }
 .below { color: var(--amber); font-weight: 700; }
