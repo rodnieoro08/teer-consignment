@@ -10,4 +10,6 @@ test("service worker claims clients, times out the network, and caches the scann
   assert.match(src, /firebase-firestore-compat\.js/);
   assert.match(src, /@zxing\/library@0\.21\.3/);
   assert.match(src, /apple-touch-icon\.png/);
+  assert.match(src, /favicon\.ico/);
+  assert.match(src, /hospital-match\.js/);
 });

@@ -167,6 +167,7 @@ textarea { min-height: 72px; font-size: 14px; resize: vertical; }
 .par-block summary { cursor: pointer; font-weight: 700; font-size: 14px; }
 .par-row { display: grid; grid-template-columns: 1fr 84px; gap: 8px; align-items: center; margin-top: 8px; font-size: 14px; }
 .par-row input { padding: 8px; }
+.csv-unmatched { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--line); }
 .file-btn {
   display: block; text-align: center; padding: 12px; border-radius: 12px;
   border: 1px dashed var(--line); color: var(--muted); font-size: 13px; background: var(--bg);

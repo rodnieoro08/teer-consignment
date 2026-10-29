@@ -9,7 +9,7 @@ const state = {
   settings: { specialist: "", team: "UK TEER", cloudUrl: "", lastHospital: "barts" }
 };
 function emptySync() {
-  return { pendingUnitIds: [], pendingDeleteIds: [], seenUnitIds: [], pendingEventIds: [], pendingParIds: [], pendingParDeleteIds: [], seenParIds: [] };
+  return { pendingUnitIds: [], pendingDeleteIds: [], pendingDeleteSerials: {}, seenUnitIds: [], pendingEventIds: [], pendingParIds: [], pendingParDeleteIds: [], seenParIds: [] };
 }
 function load() {
   state.sync = emptySync();
@@ -55,10 +55,22 @@ function clearPendingUnit(id) {
   if (!state.sync) return;
   state.sync.pendingUnitIds = state.sync.pendingUnitIds.filter(item => item !== id);
 }
-function markPendingDelete(id) {
+function markPendingDelete(id, serial) {
   if (!id || !state.sync) return;
   clearPendingUnit(id);
+  if (!state.sync.pendingDeleteSerials || Array.isArray(state.sync.pendingDeleteSerials)) state.sync.pendingDeleteSerials = {};
   if (!state.sync.pendingDeleteIds.includes(id)) state.sync.pendingDeleteIds.push(id);
+  state.sync.pendingDeleteSerials[id] = String(serial || "");
+}
+function clearPendingDelete(id) {
+  if (!state.sync) return;
+  state.sync.pendingDeleteIds = state.sync.pendingDeleteIds.filter(item => item !== id);
+  if (state.sync.pendingDeleteSerials) delete state.sync.pendingDeleteSerials[id];
+}
+function serialClash(serial, exceptId) {
+  const key = normSerial(serial);
+  if (!key) return null;
+  return state.units.find(unit => unit.id !== exceptId && normSerial(unit.serial) === key) || null;
 }
 function markPendingEvent(id) {
   if (!id || !state.sync) return;
@@ -113,8 +125,8 @@ function daysTo(exp) {
   if (!exp) return 9999;
   return Math.ceil((new Date(exp + "T00:00:00") - new Date()) / 86400000);
 }
-async function log(text) {
-  const ev = { id: crypto.randomUUID(), at: new Date().toISOString(), text: String(text || "").slice(0, 480), by: (state.settings.specialist || "") };
+async function log(text, action) {
+  const ev = { id: crypto.randomUUID(), at: new Date().toISOString(), text: String(text || "").slice(0, 480), by: (state.settings.specialist || ""), action: action || "note" };
   state.events.unshift(ev);
   if (!(cloud && cloud.live)) markPendingEvent(ev.id);
   save();
@@ -287,42 +299,66 @@ async function shareReorder() {
 function openUnit(id) {
   const u = state.units.find(x => x.id === id); if (!u) return;
   const c = catalogOf(u.sku);
-  showModal(`<h2>${esc(u.serial)}</h2><p class="hint">${esc(c.sku)} · ${esc(c.label)}<br>${esc(hospitalOf(u.hospitalId).name)} · ${esc(u.status)}${u.updatedBy ? "<br>Last edit: " + esc(u.updatedBy) : ""}</p><div class="grid-2"><div class="field"><label>SKU</label><select id="u-sku">${skuOptions(u.sku)}</select></div><div class="field"><label>Hospital</label><select id="u-hosp">${hospOptions(u.hospitalId)}</select></div><div class="field"><label>Serial</label><input id="u-sn" value="${esc(u.serial)}"></div><div class="field"><label>Expiry</label><input id="u-exp" type="date" value="${esc(u.expiry || "")}"></div><div class="field"><label>Status</label><select id="u-st"><option ${u.status==="in-stock"?"selected":""}>in-stock</option><option ${u.status==="used"?"selected":""}>used</option><option ${u.status==="in-transit"?"selected":""}>in-transit</option><option ${u.status==="quarantine"?"selected":""}>quarantine</option></select></div><div class="field"><label>Lot</label><input id="u-lot" value="${esc(u.lot || "")}"></div><div class="field span2"><label>Notes</label><textarea id="u-notes">${esc(u.notes || "")}</textarea></div></div><button class="primary" onclick="saveUnit('${escJs(u.id)}')">Save</button><button class="secondary" onclick="markUsed('${escJs(u.id)}')">Mark used in case</button><button class="secondary" onclick="startTransfer('${escJs(u.id)}')">Borrow / transfer</button><button class="danger" onclick="deleteUnit('${escJs(u.id)}')">Delete unit</button>`);
+  const canDelete = !(cloud && cloud.live) || !!(cloud && cloud.isAdmin);
+  const deleteControl = canDelete
+    ? `<button class="danger" onclick="deleteUnit('${escJs(u.id)}')">Delete unit</button>`
+    : `<p class="hint">Only an admin can delete a unit from the shared list. The deletion is written to the activity log.</p>`;
+  showModal(`<h2>${esc(u.serial)}</h2><p class="hint">${esc(c.sku)} · ${esc(c.label)}<br>${esc(hospitalOf(u.hospitalId).name)} · ${esc(u.status)}${u.updatedBy ? "<br>Last edit: " + esc(u.updatedBy) : ""}</p><div class="grid-2"><div class="field"><label>SKU</label><select id="u-sku">${skuOptions(u.sku)}</select></div><div class="field"><label>Hospital</label><select id="u-hosp">${hospOptions(u.hospitalId)}</select></div><div class="field"><label>Serial</label><input id="u-sn" value="${esc(u.serial)}"></div><div class="field"><label>Expiry</label><input id="u-exp" type="date" value="${esc(u.expiry || "")}"></div><div class="field"><label>Status</label><select id="u-st"><option ${u.status==="in-stock"?"selected":""}>in-stock</option><option ${u.status==="used"?"selected":""}>used</option><option ${u.status==="in-transit"?"selected":""}>in-transit</option><option ${u.status==="quarantine"?"selected":""}>quarantine</option></select></div><div class="field"><label>Lot</label><input id="u-lot" value="${esc(u.lot || "")}"></div><div class="field span2"><label>Notes</label><textarea id="u-notes">${esc(u.notes || "")}</textarea></div></div><button class="primary" onclick="saveUnit('${escJs(u.id)}')">Save</button><button class="secondary" onclick="markUsed('${escJs(u.id)}')">Mark used in case</button><button class="secondary" onclick="startTransfer('${escJs(u.id)}')">Borrow / transfer</button>${deleteControl}`);
 }
 async function saveUnit(id) {
   const u = state.units.find(x => x.id === id);
+  const nextSerial = document.getElementById("u-sn").value.trim();
+  if (!nextSerial) { toast("Serial is required"); return; }
+  if (serialClash(nextSerial, id)) { toast("That serial is already on the list"); return; }
   const nextH = document.getElementById("u-hosp").value;
   const moved = nextH !== u.hospitalId;
   u.sku = document.getElementById("u-sku").value;
   u.hospitalId = nextH;
-  u.serial = document.getElementById("u-sn").value.trim();
+  u.serial = nextSerial;
   u.expiry = document.getElementById("u-exp").value;
   u.status = document.getElementById("u-st").value;
   u.lot = document.getElementById("u-lot").value.trim();
   u.notes = document.getElementById("u-notes").value.trim();
   u.updatedAt = new Date().toISOString();
   await saveUnitCloud(u);
-  await log(moved ? ("Moved " + u.serial + " to " + hospitalOf(u.hospitalId).name) : ("Updated " + u.serial));
+  await log(moved ? ("Moved " + u.serial + " to " + hospitalOf(u.hospitalId).name) : ("Updated " + u.serial), moved ? "transfer" : "update");
   closeModal(); refresh(); toast(cloud && cloud.live ? "Saved for the team" : "Saved on this phone");
 }
 async function markUsed(id) {
   const u = state.units.find(x => x.id === id);
+  if (!u) return;
+  if (!confirm("Mark " + u.serial + " as used at " + hospitalOf(u.hospitalId).name + "? It comes off the in-stock board. You can set the status back to in stock afterwards.")) return;
   u.status = "used"; u.updatedAt = new Date().toISOString();
   await saveUnitCloud(u);
-  await log("Used " + u.serial + " (" + catalogOf(u.sku).size + ") at " + hospitalOf(u.hospitalId).name);
+  await log("Used " + u.serial + " (" + catalogOf(u.sku).size + ") at " + hospitalOf(u.hospitalId).name, "use");
   closeModal(); refresh(); toast("Marked used");
+}
+function recordDelete(unit) {
+  const event = { id: "del-" + unit.id, at: new Date().toISOString(), text: "Deleted " + unit.serial, by: state.settings.specialist || "", action: "delete" };
+  state.events = state.events.filter(item => item.id !== event.id);
+  state.events.unshift(event);
 }
 async function deleteUnit(id) {
   const u = state.units.find(x => x.id === id);
-  if (!confirm("Delete this unit from the shared list?")) return;
-  state.units = state.units.filter(x => x.id !== id);
-  if (cloud && cloud.live && typeof cloudDelete === "function") {
-    try { await cloudDelete("units", id); } catch (e) { markPendingDelete(id); toast(e.message); }
-  } else {
-    markPendingDelete(id);
+  if (!u) return;
+  if (cloud && cloud.live && !cloud.isAdmin) {
+    toast("Only an admin can delete a unit from the shared list.");
+    return;
   }
+  const shared = !!(cloud && cloud.live);
+  if (!confirm(shared
+    ? "Delete " + u.serial + " from the shared list? Only an admin can do this, and it is written to the activity log."
+    : "Delete " + u.serial + " from this phone? If you are signed in later as an admin, the shared copy is deleted too and written to the activity log.")) return;
+  if (shared && typeof cloudDeleteUnit === "function") {
+    try { await cloudDeleteUnit(u.id, u.serial); }
+    catch (e) { toast(e.message || "Could not delete that unit"); return; }
+  } else {
+    markPendingDelete(u.id, u.serial);
+  }
+  state.units = state.units.filter(x => x.id !== id);
+  recordDelete(u);
   save();
-  await log("Deleted " + u.serial); closeModal(); refresh();
+  closeModal(); refresh(); toast(shared ? "Deleted from the shared list" : "Deleted on this phone");
 }
 function startTransfer(id) {
   const u = state.units.find(x => x.id === id);
@@ -338,7 +374,7 @@ async function doTransfer(id) {
   u.notes = [u.notes, why ? "Transfer: " + why : "Transfer"].filter(Boolean).join(" | ");
   u.updatedAt = new Date().toISOString();
   await saveUnitCloud(u);
-  await log("Transferred " + u.serial + " " + from + " → " + hospitalOf(to).name + (why ? " · " + why : ""));
+  await log("Transferred " + u.serial + " " + from + " → " + hospitalOf(to).name + (why ? " · " + why : ""), "transfer");
   closeModal(); refresh(); toast("Transferred");
 }
 function parseUDI(text) {
@@ -403,6 +439,9 @@ async function addScanned() {
   if (existing && existing.status !== "in-stock") {
     const ok = confirm(serial + " is marked " + existing.status + " at " + hospitalOf(existing.hospitalId).name + ". Put it back in stock at " + hospitalOf(hospitalId).name + "?");
     if (!ok) { toast("No change made"); return; }
+  } else if (existing && existing.hospitalId !== hospitalId) {
+    const ok = confirm(serial + " is already in stock at " + hospitalOf(existing.hospitalId).name + ". Move it to " + hospitalOf(hospitalId).name + "?");
+    if (!ok) { toast("No change made"); return; }
   }
   if (existing) {
     existing.hospitalId = hospitalId; existing.sku = sku;
@@ -410,12 +449,12 @@ async function addScanned() {
     existing.lot = document.getElementById("scan-lot").value.trim();
     existing.status = "in-stock"; existing.updatedAt = new Date().toISOString();
     await saveUnitCloud(existing);
-    await log("Re-scanned " + serial + " at " + hospitalOf(hospitalId).name);
+    await log("Re-scanned " + serial + " at " + hospitalOf(hospitalId).name, "update");
     toast("Updated existing serial");
   } else {
     const u = { id: crypto.randomUUID(), hospitalId, sku, serial, lot: document.getElementById("scan-lot").value.trim(), expiry: document.getElementById("scan-exp").value, status: "in-stock", notes: "", createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
     state.units.push(u); await saveUnitCloud(u);
-    await log("Received " + serial + " (" + catalogOf(sku).size + ") at " + hospitalOf(hospitalId).name);
+    await log("Received " + serial + " (" + catalogOf(sku).size + ") at " + hospitalOf(hospitalId).name, "receive");
     toast(cloud && cloud.live ? "On the shared list" : "Added on this phone");
   }
   document.getElementById("scan-sn").value = "";
@@ -437,7 +476,7 @@ async function addHospital() {
   fillSelects(); renderHospitals(); toast("Hospital added");
 }
 function exportJSON() {
-  download(new Blob([JSON.stringify({ exportedAt: new Date().toISOString(), specialist: state.settings.specialist, units: state.units, events: state.events, hospitalsExtra: state.hospitals.filter(h => h.custom) }, null, 2)], { type: "application/json" }), "teer-consignment-" + dateStamp() + ".json");
+  download(new Blob([JSON.stringify(phoneBackup(state), null, 2)], { type: "application/json" }), "teer-consignment-" + dateStamp() + ".json");
 }
 function exportCSV() {
   const csv = unitsToCsv(state.units, { hospital: hospitalOf, catalog: catalogOf });
@@ -445,57 +484,142 @@ function exportCSV() {
 }
 function dateStamp() { return new Date().toISOString().slice(0, 10); }
 function download(blob, name) { const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = name; a.click(); }
+let csvReview = null;
 function importFile(file) {
   const reader = new FileReader();
   reader.onload = async () => {
     try {
-      if (file.name.toLowerCase().endsWith(".csv")) importCSV(reader.result);
-      else {
-        const d = JSON.parse(reader.result);
-        if (!Array.isArray(d.units)) throw new Error("No units array");
-        const touched = new Set((d.units || []).map(u => normSerial(u.serial)).filter(Boolean));
-        state.units = mergeImportedUnits(state.units, d.units || [], () => crypto.randomUUID());
-        if (!(cloud && cloud.live)) {
-          state.units.forEach(u => { if (touched.has(normSerial(u.serial))) markPendingUnit(u.id); });
-        }
-        (d.hospitalsExtra || []).forEach(h => { if (!state.hospitals.find(x => x.id === h.id)) state.hospitals.push(h); });
-        await log("Imported snapshot (" + d.units.length + " units)");
-      }
-      save(); if (cloud && cloud.live) await pushLocalUp(); fillSelects(); refresh(); toast("Imported");
+      if (file.name.toLowerCase().endsWith(".csv")) await startCsvImport(reader.result);
+      else await importJson(JSON.parse(reader.result));
     } catch (e) { toast("Could not import: " + e.message); }
   };
   reader.readAsText(file);
+  const input = document.getElementById("import-file");
+  if (input) input.value = "";
+}
+async function importJson(data) {
+  if (!data || !Array.isArray(data.units)) throw new Error("No units array");
+  const touched = new Set((data.units || []).map(u => normSerial(u.serial)).filter(Boolean));
+  state.units = mergeImportedUnits(state.units, data.units || [], () => crypto.randomUUID());
+  if (!(cloud && cloud.live)) {
+    state.units.forEach(u => { if (touched.has(normSerial(u.serial))) markPendingUnit(u.id); });
+  }
+  (data.hospitalsExtra || []).forEach(h => { if (h && !state.hospitals.find(x => x.id === h.id)) state.hospitals.push(h); });
+  const applied = applyPhoneBackup(state, data);
+  state.pars = applied.pars;
+  state.settings = applied.settings;
+  if (Array.isArray(data.pars) && !(cloud && cloud.live)) state.pars.forEach(par => markPendingPar(par.id));
+  await log("Imported snapshot (" + data.units.length + " units)", "import");
+  save();
+  if (cloud && cloud.live) await pushLocalUp();
+  fillSelects();
+  refresh();
+  toast(Array.isArray(data.pars) ? "Imported units and par levels" : "Imported");
 }
 const UNIT_STATUSES = ["in-stock", "used", "in-transit", "quarantine"];
-function importCSV(text) {
-  const parsed = csvToUnitRows(text);
+async function startCsvImport(text) {
+  const plan = planCsvRows(state.hospitals, csvToUnitRows(text));
+  if (!plan.matched.length && !plan.unmatched.length) throw new Error("No serials in that file");
+  if (plan.unmatched.length) {
+    csvReview = plan;
+    showCsvReview();
+    return;
+  }
+  await applyCsvRows(plan.matched, 0);
+}
+function showCsvReview() {
+  const rows = csvReview.unmatched.map(row => {
+    const name = String(row.hospital || "").trim();
+    const create = name ? `<option value="__create__">Create “${esc(name)}” as a new hospital</option>` : "";
+    return `<div class="csv-unmatched"><div class="t">${esc(row.serial || "No serial")} · ${esc(row.sku || "No SKU")}</div><div class="m">${esc(name || "No hospital name")}</div><div class="field" style="margin-top:8px"><label>What should happen to this row?</label><select data-csv-choice="${esc(String(row.index))}"><option value="__skip__">Skip this row</option>${create}${hospOptions("")}</select></div></div>`;
+  }).join("");
+  const matched = csvReview.matched.length;
+  const unmatched = csvReview.unmatched.length;
+  const matchedLine = matched === 1 ? "1 row matches a hospital exactly." : matched + " rows match a hospital exactly.";
+  const unmatchedLine = unmatched === 1 ? "1 does not." : unmatched + " do not.";
+  showModal(`<h2>Check hospital names</h2><p class="hint">${matchedLine} ${unmatchedLine} Nothing is imported until you choose. A name is never guessed from the city, so “St Thomas' Hospital, London” will not be filed at Barts.</p>${rows}<button class="primary" type="button" onclick="confirmCsvImport()">Import reviewed rows</button><button class="secondary" type="button" onclick="cancelCsvImport()">Cancel</button>`);
+}
+function cancelCsvImport() {
+  csvReview = null;
+  closeModal();
+  toast("Import cancelled");
+}
+function createHospitalRecord(name) {
+  const trimmed = String(name || "").trim();
+  if (!trimmed) return null;
+  const found = matchHospital(state.hospitals, trimmed);
+  if (found) return found;
+  const base = trimmed.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "hospital";
+  let id = base;
+  let n = 2;
+  while (state.hospitals.some(h => h.id === id)) {
+    id = base + "-" + n;
+    n += 1;
+  }
+  const hospital = { id, name: trimmed, city: "", region: "Custom", custom: true };
+  state.hospitals.push(hospital);
+  if (typeof cloudUpsert === "function") cloudUpsert("hospitals", id, hospital).catch(() => {});
+  return hospital;
+}
+async function confirmCsvImport() {
+  if (!csvReview) return;
+  const resolved = [];
+  let skipped = 0;
+  csvReview.unmatched.forEach(row => {
+    const sel = document.querySelector('[data-csv-choice="' + row.index + '"]');
+    const choice = sel ? sel.value : "skip";
+    if (!choice || choice === "__skip__" || choice === "skip") { skipped += 1; return; }
+    if (choice === "__create__" || choice === "create") {
+      const hospital = createHospitalRecord(row.hospital);
+      if (!hospital) { skipped += 1; return; }
+      resolved.push(Object.assign({}, row, { hospitalId: hospital.id }));
+      return;
+    }
+    resolved.push(Object.assign({}, row, { hospitalId: choice }));
+  });
+  const rows = csvReview.matched.concat(resolved);
+  csvReview = null;
+  closeModal();
+  await applyCsvRows(rows, skipped);
+}
+async function applyCsvRows(rows, skipped) {
   let n = 0;
-  parsed.forEach(cols => {
-    const serial = cols.serial; if (!serial) return;
-    const hospName = cols.hospital || "";
-    const hosp = state.hospitals.find(h => h.name.toLowerCase() === hospName.toLowerCase()) || state.hospitals.find(h => hospName && h.city && hospName.toLowerCase().includes(h.city.toLowerCase()));
-    const sku = cols.sku || "";
-    const existing = state.units.find(u => u.serial.toLowerCase() === serial.toLowerCase());
+  rows.forEach(cols => {
+    const serial = String(cols.serial || "").trim();
+    if (!serial || !cols.hospitalId) return;
+    const existing = state.units.find(u => normSerial(u.serial) === normSerial(serial));
     const status = UNIT_STATUSES.includes(cols.status) ? cols.status : "in-stock";
-    const row = { hospitalId: hosp ? hosp.id : state.settings.lastHospital, sku: sku || "CDS0802-XTW", serial, lot: cols.lot || "", expiry: cols.expiry || "", status, notes: cols.notes || "", updatedAt: new Date().toISOString() };
+    const row = { hospitalId: cols.hospitalId, sku: cols.sku || "CDS0802-XTW", serial, lot: cols.lot || "", expiry: cols.expiry || "", status, notes: cols.notes || "", updatedAt: new Date().toISOString() };
     if (existing) Object.assign(existing, row);
     else state.units.push(Object.assign({ id: crypto.randomUUID(), createdAt: new Date().toISOString() }, row));
     const saved = existing || state.units[state.units.length - 1];
     if (!(cloud && cloud.live)) markPendingUnit(saved.id);
-    n++;
+    n += 1;
   });
-  log("Imported CSV (" + n + " rows)");
+  await log("Imported CSV (" + n + " rows" + (skipped ? ", skipped " + skipped : "") + ")", "import");
+  save();
+  if (cloud && cloud.live) await pushLocalUp();
+  fillSelects();
+  refresh();
+  toast("Imported " + n + (skipped ? ". Skipped " + skipped : ""));
 }
 function resetDemo() {
   if (!confirm("Replace local data with the demo consignment?")) return;
   state.units = demoUnits();
   state.pars = demoPars();
-  state.events = [{ id: crypto.randomUUID(), at: new Date().toISOString(), text: "Demo consignment reloaded" }];
+  state.events = [{ id: crypto.randomUUID(), at: new Date().toISOString(), text: "Demo consignment reloaded", action: "note" }];
   save(); refresh(); toast("Demo loaded");
 }
 function wipeAll() {
-  if (!confirm("Erase every unit on this phone?")) return;
-  state.units = []; state.events = [{ at: new Date().toISOString(), text: "Local stock cleared" }]; save(); refresh();
+  if (cloud && cloud.live) {
+    toast("Sign out first. Erase clears this phone only, and the shared list would refill it while you are signed in.");
+    return;
+  }
+  if (!confirm("Erase every unit on this phone? The shared list is not changed. If you sign in later, shared units load again.")) return;
+  state.units = [];
+  if (state.sync) state.sync.pendingUnitIds = [];
+  state.events.unshift({ id: crypto.randomUUID(), at: new Date().toISOString(), text: "Cleared units on this phone. The shared list was not changed.", by: state.settings.specialist || "", action: "note" });
+  save(); refresh(); toast("Units cleared on this phone");
 }
 function showScreen(id) {
   document.querySelectorAll(".screen").forEach(s => s.classList.toggle("active", s.id === "screen-" + id));

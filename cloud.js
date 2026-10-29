@@ -151,6 +151,7 @@ function ensureSync() {
   ["pendingUnitIds", "pendingDeleteIds", "seenUnitIds", "pendingEventIds", "pendingParIds", "pendingParDeleteIds", "seenParIds"].forEach((key) => {
     if (!Array.isArray(state.sync[key])) state.sync[key] = [];
   });
+  if (!state.sync.pendingDeleteSerials || Array.isArray(state.sync.pendingDeleteSerials)) state.sync.pendingDeleteSerials = {};
 }
 
 function applyUnitSnapshot(rows) {
@@ -264,13 +265,24 @@ async function flushUnitDeletes(ids) {
     if (unitDeleteAttempt.has(id)) continue;
     unitDeleteAttempt.add(id);
     try {
-      await cloudDelete("units", id);
       ensureSync();
+      const serial = state.sync.pendingDeleteSerials[id] || "";
+      await cloudDeleteUnit(id, serial);
       state.sync.pendingDeleteIds = state.sync.pendingDeleteIds.filter((item) => item !== id);
+      delete state.sync.pendingDeleteSerials[id];
       saveLocalOnly();
     } catch (e) {
       unitDeleteAttempt.delete(id);
-      toast(e.message || "Could not delete a unit");
+      if (e && e.code === "permission-denied") {
+        ensureSync();
+        state.sync.pendingDeleteIds = state.sync.pendingDeleteIds.filter((item) => item !== id);
+        delete state.sync.pendingDeleteSerials[id];
+        state.events = (state.events || []).filter((event) => event.id !== "del-" + id);
+        saveLocalOnly();
+        toast("Only an admin can delete a unit from the shared list.");
+      } else {
+        toast(e.message || "Could not delete a unit");
+      }
     }
   }
 }
@@ -457,15 +469,17 @@ function accessPayload(email, name, role) {
 async function claimAdmin() {
   if (!cloud.db || !cloud.email) { toast("Sign in with an email address first"); return; }
   try {
-    await cloud.db.collection("members").doc(cloud.email).set(accessPayload(cloud.email, whoName(), "admin"));
-    await cloud.db.collection("meta").doc("bootstrap").set({
+    const batch = cloud.db.batch();
+    batch.set(cloud.db.collection("members").doc(cloud.email), accessPayload(cloud.email, whoName(), "admin"));
+    batch.set(cloud.db.collection("meta").doc("bootstrap"), {
       claimed: true,
       email: cloud.email,
       at: new Date().toISOString()
     });
+    await batch.commit();
     toast("You are the first admin. Add the rest of the team.");
   } catch (e) {
-    toast(e.message || "Could not claim admin. Publish the rules, or ask the existing admin to add you.");
+    toast(e.message || "Could not claim the first admin seat. Publish the rules, or ask the existing admin to add you.");
   }
 }
 
@@ -550,7 +564,7 @@ async function beatPresence() {
 
 const CLOUD_FIELDS = {
   units: ["id", "hospitalId", "sku", "serial", "lot", "expiry", "status", "notes", "createdAt", "updatedAt", "updatedBy"],
-  events: ["id", "at", "text", "by", "updatedAt", "updatedBy"],
+  events: ["id", "at", "text", "by", "action", "updatedAt", "updatedBy"],
   hospitals: ["id", "name", "city", "region", "custom", "updatedAt", "updatedBy"],
   pars: ["hospitalId", "family", "familyKey", "size", "par", "updatedAt", "updatedBy"]
 };
@@ -569,7 +583,7 @@ function shapeForCloud(col, id, data) {
     source.notes = String(source.notes || "").slice(0, 499);
     source.hospitalId = String(source.hospitalId || "").slice(0, 79);
     source.sku = String(source.sku || "").slice(0, 39);
-    source.serial = String(source.serial || "").slice(0, 79);
+    source.serial = String(source.serial || "").trim().slice(0, 79);
     source.createdAt = String(source.createdAt || now).slice(0, 39);
     if (!["in-stock", "used", "in-transit", "quarantine"].includes(source.status)) source.status = "in-stock";
   }
@@ -577,6 +591,8 @@ function shapeForCloud(col, id, data) {
     source.at = String(source.at || now).slice(0, 39);
     source.text = String(source.text || "").slice(0, 499);
     source.by = String(source.by || "").slice(0, 79);
+    const actions = ["receive", "update", "use", "transfer", "delete", "import", "note"];
+    source.action = actions.includes(source.action) ? source.action : "note";
   }
   if (col === "hospitals") {
     source.name = String(source.name || "").slice(0, 119);
@@ -599,16 +615,59 @@ function shapeForCloud(col, id, data) {
   return payload;
 }
 
+function serialKey(serial) {
+  const key = String(serial || "").trim().toLowerCase();
+  return /^[a-z0-9][a-z0-9._-]{0,78}$/.test(key) ? key : "";
+}
+
 async function cloudUpsert(col, id, data) {
   saveLocalOnly();
   if (!cloud.live) return;
+  if (col === "units") return cloudUpsertUnit(id, data);
   const payload = shapeForCloud(col, id, data);
   await cloud.db.collection(col).doc(id).set(payload, { merge: true });
 }
+
+async function cloudUpsertUnit(id, data) {
+  const payload = shapeForCloud("units", id, data);
+  const key = serialKey(payload.serial);
+  if (!key) throw new Error("Serial can only use letters, numbers, dots, underscores and hyphens");
+  const unitRef = cloud.db.collection("units").doc(id);
+  await cloud.db.runTransaction(async (tx) => {
+    const snap = await tx.get(unitRef);
+    const previous = snap.exists ? serialKey((snap.data() && snap.data().serial) || "") : "";
+    tx.set(unitRef, payload, { merge: true });
+    if (!snap.exists || previous !== key) {
+      if (previous && previous !== key) tx.delete(cloud.db.collection("serials").doc(previous));
+      tx.set(cloud.db.collection("serials").doc(key), { unitId: id, serial: payload.serial });
+    }
+  });
+}
+
 async function cloudDelete(col, id) {
   saveLocalOnly();
   if (!cloud.live) return;
+  if (col === "units") throw new Error("Unit deletes go through the activity log");
   await cloud.db.collection(col).doc(id).delete();
+}
+
+async function cloudDeleteUnit(id, serial) {
+  saveLocalOnly();
+  if (!cloud.live) return;
+  const key = serialKey(serial);
+  const eventId = "del-" + id;
+  const event = shapeForCloud("events", eventId, {
+    id: eventId,
+    at: new Date().toISOString(),
+    text: "Deleted " + (serial || "unit"),
+    by: whoName(),
+    action: "delete"
+  });
+  await cloud.db.runTransaction(async (tx) => {
+    tx.delete(cloud.db.collection("units").doc(id));
+    if (key) tx.delete(cloud.db.collection("serials").doc(key));
+    tx.set(cloud.db.collection("events").doc(eventId), event);
+  });
 }
 
 async function signInEmail(email, pass, create) {
@@ -676,6 +735,19 @@ function setLiveUi() {
   if (signed) signed.textContent = cloud.user ? (cloud.user.email || cloud.user.uid) : "Not signed in";
   const earlier = document.getElementById("btn-earlier");
   if (earlier) earlier.style.display = cloud.live && cloud.eventsHasMore ? "block" : "none";
+  const wipe = document.getElementById("btn-wipe");
+  const wipeHint = document.getElementById("wipe-hint");
+  if (wipe && wipeHint) {
+    if (cloud.live) {
+      wipe.disabled = true;
+      wipe.textContent = "Erase waits until you sign out";
+      wipeHint.textContent = "Erase removes units on this phone only. It does not delete the shared list. While you are signed in, the shared list would refill the phone, so erase is available after you sign out.";
+    } else {
+      wipe.disabled = false;
+      wipe.textContent = "Erase units on this phone";
+      wipeHint.textContent = "Erases units stored on this phone. It does not delete the shared list. If you sign in later, shared units load again.";
+    }
+  }
 }
 
 async function pushLocalUp() {
@@ -689,7 +761,9 @@ async function pushLocalUp() {
       count += 1;
     }
     for (const id of state.sync.pendingDeleteIds.slice()) {
-      await cloudDelete("units", id);
+      const serial = (state.sync.pendingDeleteSerials || {})[id] || "";
+      await cloudDeleteUnit(id, serial);
+      delete state.sync.pendingDeleteSerials[id];
     }
     state.sync.pendingDeleteIds = [];
     for (const event of state.events) {
