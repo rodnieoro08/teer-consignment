@@ -9,6 +9,7 @@
   <title>TEER Consignment</title>
   <link rel="manifest" href="./manifest.json" />
   <link rel="stylesheet" href="./styles.css" />
+  <link rel="icon" href="./favicon.ico" type="image/png" />
   <link rel="apple-touch-icon" href="./apple-touch-icon.png" />
   <style>
     .flag-line { font-size: 13px; padding: 8px 0; border-bottom: 1px solid var(--line); color: #d7e6f2; }
@@ -174,8 +175,9 @@
       </div>
       <div class="card">
         <h2>This phone</h2>
+        <p class="hint" id="wipe-hint">Erases units stored on this phone. It does not delete the shared list. If you sign in later, shared units load again.</p>
         <button class="secondary" id="btn-demo" type="button">Reload demo stock</button>
-        <button class="danger" id="btn-wipe" type="button">Clear local stock</button>
+        <button class="danger" id="btn-wipe" type="button">Erase units on this phone</button>
         <p class="disclaimer">Personal / team operations helper. Not CE or UKCA marked. Not an Abbott inventory system of record. Do not put patient names in notes. Do not commit live serials or the Firebase config to GitHub.</p>
       </div>
     </section>
@@ -218,6 +220,8 @@
   <script src="./gs1.js"></script>
   <script src="./sync-merge.js"></script>
   <script src="./pars.js"></script>
+  <script src="./hospital-match.js"></script>
+  <script src="./backup.js"></script>
   <script src="./cloud.js"></script>
   <script src="./app.js"></script>
   <script src="./scan-fix.js"></script>

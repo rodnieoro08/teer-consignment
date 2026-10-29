@@ -10,6 +10,15 @@ service cloud.firestore {
     function memberPath(id) {
       return /databases/$(database)/documents/members/$(id);
     }
+    function unitPath(id) {
+      return /databases/$(database)/documents/units/$(id);
+    }
+    function serialPath(key) {
+      return /databases/$(database)/documents/serials/$(key);
+    }
+    function eventPath(id) {
+      return /databases/$(database)/documents/events/$(id);
+    }
     function isActiveMember() {
       return signedIn()
         && exists(memberPath(email()))
@@ -17,6 +26,17 @@ service cloud.firestore {
     }
     function isAdmin() {
       return isActiveMember() && get(memberPath(email())).data.role == "admin";
+    }
+    function serialOk(value) {
+      return value is string && value.lower().matches('^[a-z0-9][a-z0-9._-]{0,78}$');
+    }
+    function lockCleared(serial) {
+      return !(serial is string) || !serialOk(serial) || !existsAfter(serialPath(serial.lower()));
+    }
+    function deleteLogged(unitId) {
+      let eventId = "del-" + unitId;
+      let ev = getAfter(eventPath(eventId)).data;
+      return ev.id == eventId && ev.action == "delete" && ev.text is string && ev.text.size() > 0;
     }
     function validMember() {
       let data = request.resource.data;
@@ -41,7 +61,8 @@ service cloud.firestore {
       return data.keys().hasOnly(["id", "hospitalId", "sku", "serial", "lot", "expiry", "status", "notes", "createdAt", "updatedAt", "updatedBy"])
         && data.hospitalId is string && data.hospitalId.size() > 0 && data.hospitalId.size() < 80
         && data.sku is string && data.sku.size() > 0 && data.sku.size() < 40
-        && data.serial is string && data.serial.size() > 0 && data.serial.size() < 80
+        && serialOk(data.serial)
+        && data.serial.size() < 80
         && data.status in ["in-stock", "used", "in-transit", "quarantine"]
         && data.lot is string && data.lot.size() < 40
         && data.expiry is string && (data.expiry == "" || data.expiry.matches("^\\d{4}-\\d{2}-\\d{2}$"))
@@ -54,11 +75,12 @@ service cloud.firestore {
 
     function validEvent(id) {
       let data = request.resource.data;
-      return data.keys().hasOnly(["id", "at", "text", "by", "updatedAt", "updatedBy"])
+      return data.keys().hasOnly(["id", "at", "text", "by", "action", "updatedAt", "updatedBy"])
         && data.id == id
         && data.at is string && data.at.size() > 8 && data.at.size() < 40
         && data.text is string && data.text.size() > 0 && data.text.size() < 500
         && data.by is string && data.by.size() < 80
+        && data.action in ["receive", "update", "use", "transfer", "delete", "import", "note"]
         && data.updatedAt is string && data.updatedAt.size() < 40
         && data.updatedBy is string && data.updatedBy.size() < 80;
     }
@@ -83,6 +105,15 @@ service cloud.firestore {
         && data.ts is number;
     }
 
+    function validBootstrap() {
+      let data = request.resource.data;
+      return data.keys().hasOnly(["claimed", "email", "at"])
+        && data.claimed == true
+        && data.email == email()
+        && data.at is string
+        && data.at.size() < 40;
+    }
+
     match /members/{emailId} {
       allow read: if isAdmin() || (signedIn() && emailId == email());
       allow create: if validMember() && emailId == request.resource.data.email && (
@@ -93,6 +124,8 @@ service cloud.firestore {
           && request.resource.data.role == "admin"
           && request.resource.data.active == true
           && !exists(/databases/$(database)/documents/meta/bootstrap)
+          && getAfter(/databases/$(database)/documents/meta/bootstrap).data.claimed == true
+          && getAfter(/databases/$(database)/documents/meta/bootstrap).data.email == email()
         )
       );
       allow update: if isAdmin() && validMember() && emailId == request.resource.data.email
@@ -102,17 +135,50 @@ service cloud.firestore {
 
     match /meta/bootstrap {
       allow read: if signedIn();
-      allow create: if isAdmin()
-        && request.resource.data.keys().hasOnly(["claimed", "email", "at"])
-        && request.resource.data.claimed == true
-        && request.resource.data.email == email();
+      allow create: if signedIn()
+        && validBootstrap()
+        && getAfter(memberPath(email())).data.role == "admin"
+        && getAfter(memberPath(email())).data.active == true
+        && getAfter(memberPath(email())).data.email == email();
       allow update, delete: if false;
     }
 
     match /units/{id} {
       allow read: if isActiveMember();
-      allow create, update: if isActiveMember() && validUnit(id);
-      allow delete: if isActiveMember();
+      allow create: if isActiveMember() && validUnit(id)
+        && getAfter(serialPath(request.resource.data.serial.lower())).data.unitId == id;
+      allow update: if isActiveMember() && validUnit(id) && (
+        request.resource.data.serial.lower() == resource.data.serial.lower()
+        || (
+          lockCleared(resource.data.serial)
+          && getAfter(serialPath(request.resource.data.serial.lower())).data.unitId == id
+        )
+      );
+      allow delete: if isAdmin()
+        && lockCleared(resource.data.serial)
+        && deleteLogged(id);
+    }
+
+    match /serials/{key} {
+      allow read: if isActiveMember();
+      allow create: if isActiveMember()
+        && serialOk(key)
+        && request.resource.data.keys().hasOnly(["unitId", "serial"])
+        && request.resource.data.unitId is string
+        && request.resource.data.unitId.size() > 0
+        && request.resource.data.unitId.size() < 80
+        && request.resource.data.serial is string
+        && request.resource.data.serial.lower() == key
+        && getAfter(unitPath(request.resource.data.unitId)).data.id == request.resource.data.unitId
+        && getAfter(unitPath(request.resource.data.unitId)).data.serial.lower() == key;
+      allow update: if false;
+      allow delete: if isActiveMember() && (
+        (isAdmin() && !existsAfter(unitPath(resource.data.unitId)))
+        || (
+          existsAfter(unitPath(resource.data.unitId))
+          && getAfter(unitPath(resource.data.unitId)).data.serial.lower() != key
+        )
+      );
     }
 
     match /events/{id} {
