@@ -639,8 +639,9 @@ function setLiveUi() {
   const cfg = loadFbConfig();
   if (pill) {
     if (cloud.live && cloud.user) {
-      pill.textContent = "Live";
-      pill.className = "pill";
+      const waiting = typeof pendingSyncCount === "function" ? pendingSyncCount() : 0;
+      pill.textContent = waiting ? "Live · " + waiting + " to sync" : "Live";
+      pill.className = waiting ? "pill warn" : "pill";
     } else if (cloud.user && !cloud.isMember) {
       pill.textContent = "Not on team list";
       pill.className = "pill bad";
@@ -675,7 +676,7 @@ function setLiveUi() {
   const signed = document.getElementById("signed-as");
   if (signed) signed.textContent = cloud.user ? (cloud.user.email || cloud.user.uid) : "Not signed in";
   const earlier = document.getElementById("btn-earlier");
-  if (earlier) earlier.style.display = cloud.live && cloud.eventsHasMore ? "block" : "none";
+  if (earlier) earlier.style.display = (typeof hasEarlierActivity === "function" ? hasEarlierActivity() : cloud.live && cloud.eventsHasMore) ? "block" : "none";
 }
 
 async function pushLocalUp() {
