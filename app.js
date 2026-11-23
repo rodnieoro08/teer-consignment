@@ -100,11 +100,34 @@ async function saveUnitCloud(u) {
     }
   }
 }
-function toast(msg) {
+let toastTimer = null;
+let activityShown = 8;
+function toast(msg, undo) {
   const el = document.getElementById("toast");
-  el.textContent = msg;
-  el.style.display = "block";
-  setTimeout(() => { el.style.display = "none"; }, 2200);
+  el.replaceChildren();
+  const text = document.createElement("span");
+  text.textContent = msg;
+  el.appendChild(text);
+  if (typeof undo === "function") {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "toast-undo";
+    button.textContent = "Undo";
+    button.addEventListener("click", () => {
+      clearTimeout(toastTimer);
+      el.classList.remove("on");
+      undo();
+    });
+    el.appendChild(button);
+  }
+  el.classList.add("on");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { el.classList.remove("on"); }, undo ? 6000 : 2200);
+}
+function hasEarlierActivity() {
+  const moreLocal = state.events.length > activityShown;
+  const moreCloud = typeof cloud !== "undefined" && cloud.live && cloud.eventsHasMore;
+  return moreLocal || moreCloud;
 }
 function catalogOf(sku) { return state.catalog.find(c => c.sku === sku) || { sku, size: "?", kind: "?", label: sku, family: "" }; }
 function hospitalOf(id) { return state.hospitals.find(h => h.id === id) || { name: id, city: "", region: "" }; }
@@ -265,7 +288,9 @@ function renderHome() {
     alerts.push(`<button type="button" class="flag-btn" data-alert="unit" data-unit="${esc(unit.id)}">${esc(item.family)} ${esc(item.size)} ${esc(unit.serial)} · ${esc(shortSite(hospitalOf(unit.hospitalId)))} · ${esc(note.text)}</button>`);
   });
   document.getElementById("alerts").innerHTML = alerts.join("") || `<div class="empty">Nothing below par, and every loose clip has a guide. Set par levels on a hospital to flag reorders.</div>`;
-  document.getElementById("activity").innerHTML = state.events.slice(0, 8).map((event) => `<div class="row"><div><div class="t">${esc(event.text)}</div><div class="m">${esc(new Date(event.at).toLocaleString("en-GB"))}${event.by ? " · " + esc(event.by) : ""}</div></div></div>`).join("") || `<div class="empty">No activity yet</div>`;
+  document.getElementById("activity").innerHTML = state.events.slice(0, activityShown).map((event) => `<div class="row"><div><div class="t">${esc(event.text)}</div><div class="m">${esc(new Date(event.at).toLocaleString("en-GB"))}${event.by ? " · " + esc(event.by) : ""}</div></div></div>`).join("") || `<div class="empty">No activity yet</div>`;
+  const earlier = document.getElementById("btn-earlier");
+  if (earlier) earlier.style.display = hasEarlierActivity() ? "block" : "none";
 }
 function readFindQuery() {
   return {
@@ -277,7 +302,17 @@ function readFindQuery() {
     sort: document.getElementById("find-sort").value
   };
 }
+function renderFamilyChips() {
+  const row = document.getElementById("find-family-chips");
+  const select = document.getElementById("find-family");
+  if (!row || !select) return;
+  const names = [["", "Any"]];
+  MATRIX_FAMILIES.forEach((group) => names.push([group.family, matrixChipLabel(group.family)]));
+  if (state.catalog.some((item) => item.family === "Accessory")) names.push(["Accessory", "Acc"]);
+  row.innerHTML = names.map(([value, label]) => `<button type="button" class="chip-btn${select.value === value ? " on" : ""}" data-find-family="${esc(value)}">${esc(label)}</button>`).join("");
+}
 function renderFind() {
+  renderFamilyChips();
   const query = readFindQuery();
   let units = sortUnits(state.units.filter((unit) => unitMatchesQuery(unit, query, lookupDeps())), query.sort, lookupDeps());
   const summary = document.getElementById("find-summary");
@@ -539,13 +574,18 @@ function openUnit(id) {
   const u = state.units.find(x => x.id === id); if (!u) return;
   const c = catalogOf(u.sku);
   const exp = expiryNote(u.expiry);
-  showModal(`<h2>${esc(u.serial)}</h2><p class="hint">${esc(c.family)} · ${esc(c.sku)} · ${esc(c.label)}<br>${esc(hospitalOf(u.hospitalId).name)} · ${esc(u.status)}${u.updatedBy ? "<br>Last edit: " + esc(u.updatedBy) : ""}<br><span class="${exp.cls}">${esc(exp.text)}</span></p><div class="grid-2"><div class="field"><label>SKU</label><select id="u-sku">${skuOptions(u.sku)}</select></div><div class="field"><label>Hospital</label><select id="u-hosp">${hospOptions(u.hospitalId)}</select></div><div class="field"><label>Serial</label><input id="u-sn" value="${esc(u.serial)}"></div><div class="field"><label>Expiry</label><input id="u-exp" type="date" value="${esc(u.expiry || "")}"></div><div class="field"><label>Status</label><select id="u-st"><option ${u.status==="in-stock"?"selected":""}>in-stock</option><option ${u.status==="used"?"selected":""}>used</option><option ${u.status==="in-transit"?"selected":""}>in-transit</option><option ${u.status==="quarantine"?"selected":""}>quarantine</option></select></div><div class="field"><label>Lot</label><input id="u-lot" value="${esc(u.lot || "")}"></div><div class="field span2"><label>Notes</label><textarea id="u-notes">${esc(u.notes || "")}</textarea></div></div><button class="primary" onclick="saveUnit('${escJs(u.id)}')">Save</button><button class="secondary" type="button" onclick="copySerial('${escJs(u.serial)}')">Copy serial</button><button class="secondary" onclick="markUsed('${escJs(u.id)}')">Mark used in case</button><button class="secondary" onclick="startTransfer('${escJs(u.id)}')">Borrow / transfer</button><button class="danger" onclick="deleteUnit('${escJs(u.id)}')">Delete unit</button>`);
+  const caseAction = u.status === "used"
+    ? `<button class="primary" type="button" onclick="restoreStock('${escJs(u.id)}')">Put back in stock</button>`
+    : `<button class="primary" type="button" onclick="markUsed('${escJs(u.id)}')">Mark used in case</button>`;
+  showModal(`<h2>${esc(u.serial)}</h2><p class="hint">${esc(c.family)} · ${esc(c.sku)} · ${esc(c.label)}<br>${esc(hospitalOf(u.hospitalId).name)} · ${esc(u.status)}${u.updatedBy ? "<br>Last edit: " + esc(u.updatedBy) : ""}<br><span class="${exp.cls}">${esc(exp.text)}</span></p>${caseAction}<button class="secondary" type="button" onclick="startTransfer('${escJs(u.id)}')">Borrow / transfer</button><button class="secondary" type="button" onclick="copySerial('${escJs(u.serial)}')">Copy serial</button><details class="find-more"><summary>Edit details</summary><div class="grid-2"><div class="field"><label>SKU</label><select id="u-sku">${skuOptions(u.sku)}</select></div><div class="field"><label>Hospital</label><select id="u-hosp">${hospOptions(u.hospitalId)}</select></div><div class="field"><label>Serial</label><input id="u-sn" value="${esc(u.serial)}"></div><div class="field"><label>Expiry</label><input id="u-exp" type="date" value="${esc(u.expiry || "")}"></div><div class="field"><label>Status</label><select id="u-st"><option ${u.status==="in-stock"?"selected":""}>in-stock</option><option ${u.status==="used"?"selected":""}>used</option><option ${u.status==="in-transit"?"selected":""}>in-transit</option><option ${u.status==="quarantine"?"selected":""}>quarantine</option></select></div><div class="field"><label>Lot</label><input id="u-lot" value="${esc(u.lot || "")}"></div><div class="field span2"><label>Notes</label><textarea id="u-notes">${esc(u.notes || "")}</textarea></div></div><button class="primary" type="button" onclick="saveUnit('${escJs(u.id)}')">Save</button><button class="danger" type="button" onclick="deleteUnit('${escJs(u.id)}')">Delete unit</button></details>`);
 }
 function copySerial(serial) {
   const text = String(serial || "");
   const field = document.getElementById("u-sn");
   const selectField = () => {
     if (!field) return false;
+    const details = field.closest("details");
+    if (details) details.open = true;
     field.focus();
     field.select();
     try { field.setSelectionRange(0, text.length); } catch (_) {}
@@ -575,12 +615,28 @@ async function saveUnit(id) {
   await log(moved ? ("Moved " + u.serial + " to " + hospitalOf(u.hospitalId).name) : ("Updated " + u.serial));
   closeModal(); refresh(); toast(cloud && cloud.live ? "Saved for the team" : "Saved on this phone");
 }
+async function setStatus(id, status, logText, toastText) {
+  const u = state.units.find(x => x.id === id);
+  if (!u) return;
+  const previous = u.status;
+  if (previous === status) { toast("Already " + status); return; }
+  u.status = status;
+  u.updatedAt = new Date().toISOString();
+  await saveUnitCloud(u);
+  await log(logText);
+  closeModal();
+  refresh();
+  toast(toastText, () => setStatus(id, previous, "Restored " + u.serial + " to " + previous, "Restored"));
+}
 async function markUsed(id) {
   const u = state.units.find(x => x.id === id);
-  u.status = "used"; u.updatedAt = new Date().toISOString();
-  await saveUnitCloud(u);
-  await log("Used " + u.serial + " (" + catalogOf(u.sku).size + ") at " + hospitalOf(u.hospitalId).name);
-  closeModal(); refresh(); toast("Marked used");
+  if (!u) return;
+  await setStatus(id, "used", "Used " + u.serial + " (" + catalogOf(u.sku).size + ") at " + hospitalOf(u.hospitalId).name, "Marked used");
+}
+async function restoreStock(id) {
+  const u = state.units.find(x => x.id === id);
+  if (!u) return;
+  await setStatus(id, "in-stock", "Returned " + u.serial + " to stock at " + hospitalOf(u.hospitalId).name, "Back in stock");
 }
 async function deleteUnit(id) {
   const u = state.units.find(x => x.id === id);
@@ -892,6 +948,13 @@ function onBoardClick(e) {
     applyFind({ q: "", size: quick.getAttribute("data-quick-size"), family: "", status: "in-stock", expiry: "", sort: "hospital" });
     return;
   }
+  const familyChip = e.target.closest("[data-find-family]");
+  if (familyChip) {
+    const select = document.getElementById("find-family");
+    if (select) select.value = familyChip.getAttribute("data-find-family") || "";
+    renderFind();
+    return;
+  }
   const family = e.target.closest("[data-matrix-family]");
   if (family) {
     state.settings.matrixFamily = family.getAttribute("data-matrix-family");
@@ -966,7 +1029,14 @@ function bind() {
   document.getElementById("btn-signout").addEventListener("click", async () => { await signOutCloud(); toast("Signed out"); });
   document.getElementById("btn-push-up").addEventListener("click", pushLocalUp);
   const earlier = document.getElementById("btn-earlier");
-  if (earlier) earlier.addEventListener("click", () => { if (typeof loadEarlierEvents === "function") loadEarlierEvents(); });
+  if (earlier) earlier.addEventListener("click", () => {
+    if (state.events.length > activityShown) {
+      activityShown += 24;
+      renderHome();
+      return;
+    }
+    if (typeof loadEarlierEvents === "function") loadEarlierEvents();
+  });
   const reorderCsv = document.getElementById("btn-reorder-csv");
   if (reorderCsv) reorderCsv.addEventListener("click", exportReorder);
   const reorderShare = document.getElementById("btn-reorder-share");

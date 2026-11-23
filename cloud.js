@@ -676,7 +676,7 @@ function setLiveUi() {
   const signed = document.getElementById("signed-as");
   if (signed) signed.textContent = cloud.user ? (cloud.user.email || cloud.user.uid) : "Not signed in";
   const earlier = document.getElementById("btn-earlier");
-  if (earlier) earlier.style.display = cloud.live && cloud.eventsHasMore ? "block" : "none";
+  if (earlier) earlier.style.display = (typeof hasEarlierActivity === "function" ? hasEarlierActivity() : cloud.live && cloud.eventsHasMore) ? "block" : "none";
 }
 
 async function pushLocalUp() {

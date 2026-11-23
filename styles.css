@@ -159,7 +159,14 @@ button.kpi .tiny { color: var(--red); min-height: 0; }
 .toast {
   position: fixed; left: 16px; right: 16px; bottom: calc(84px + var(--safe));
   background: #123; border: 1px solid var(--teal); color: var(--text);
-  padding: 12px 14px; border-radius: 12px; z-index: 40; display: none; text-align: center; font-size: 14px;
+  padding: 12px 14px; border-radius: 12px; z-index: 60; display: none;
+  align-items: center; justify-content: center; gap: 12px;
+  text-align: center; font-size: 14px;
+}
+.toast.on { display: flex; }
+.toast-undo {
+  width: auto; background: transparent; border: 0; color: var(--teal);
+  font: inherit; font-weight: 800; padding: 4px 8px; min-height: 44px;
 }
 .empty { text-align: center; color: var(--muted); padding: 28px 12px; font-size: 13px; }
 .disclaimer { font-size: 11px; color: var(--muted); line-height: 1.45; margin-top: 8px; }

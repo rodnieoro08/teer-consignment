@@ -60,7 +60,7 @@ TriClip catalogue numbers are the EU MDR codes published by Abbott. Verified GTI
 
 ## On the way to a case
 
-The home counts open Find already filtered: everything in stock, what expires inside 90 or 30 days (soonest first), or the sites that currently hold stock. Size chips (XTW, NTW, and the rest) do the same for one size.
+The home counts open Find already filtered: everything in stock, what expires inside 90 or 30 days (soonest first), or the sites that currently hold stock. Size chips (XTW, NTW, and the rest) do the same for one size. Family chips on Find keep MitraClip and TriClip, and G4 and G5, apart. Shortages and missing guides sit above the matrix. Marking a unit used can be undone from the toast, and a used unit can be put back in stock.
 
 Tap a matrix number to see those units. A red zero, or any cell under par, lists who else has that size. Spare means the other hospital stays at or above its own par after one unit leaves.
 

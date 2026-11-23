@@ -47,17 +47,17 @@
         <button class="secondary" type="button" onclick="showScreen('scan')">Scan a box</button>
       </div>
       <div class="card">
-        <h2>National clip matrix</h2>
-        <p class="hint">In-stock units only. Tap a number to see the units, or who else has that size. Red means a size you stock is at zero. Amber is below par. A grey zero is a size that site does not carry.</p>
-        <div class="chip-row" id="matrix-families"></div>
-        <div id="matrix"></div>
-      </div>
-      <div class="card">
         <h2>Reorder & expiry</h2>
         <p class="hint">Short lines name who else has that size. A clip with no steerable guide is listed on its own. A bundle includes its own guide and does not cover a loose clip.</p>
         <div id="alerts"></div>
         <button class="secondary" id="btn-reorder-csv" type="button">Export reorder list</button>
         <button class="secondary" id="btn-reorder-share" type="button">Share reorder list</button>
+      </div>
+      <div class="card">
+        <h2>National clip matrix</h2>
+        <p class="hint">In-stock units only. Tap a number to see the units, or who else has that size. Red means a size you stock is at zero. Amber is below par. A grey zero is a size that site does not carry.</p>
+        <div class="chip-row" id="matrix-families"></div>
+        <div id="matrix"></div>
       </div>
       <div class="card">
         <h2>Activity</h2>
@@ -71,6 +71,7 @@
         <h2>Find stock</h2>
         <p class="hint">Type XTW, TriClip, a hospital, or a serial. Results are grouped by hospital.</p>
         <div class="field"><label>Search</label><input id="find-q" placeholder="XTW / Barts / serial" enterkeyhint="search"></div>
+        <div class="chip-row" id="find-family-chips"></div>
         <p class="tiny" id="find-summary"></p>
         <details class="find-more" id="find-more">
           <summary>Filters</summary>
