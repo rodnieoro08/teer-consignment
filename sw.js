@@ -1,4 +1,4 @@
-const CACHE = "teer-consign-v15";
+const CACHE = "teer-consign-v16";
 const ASSETS = [
   "./",
   "./index.html",
