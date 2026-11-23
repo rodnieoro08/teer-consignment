@@ -4,8 +4,9 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-  <meta name="theme-color" content="#071422" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)" />
+  <meta name="theme-color" content="#17212c" media="(prefers-color-scheme: dark)" />
   <title>TEER Consignment</title>
   <link rel="manifest" href="./manifest.json" />
   <link rel="stylesheet" href="./styles.css" />
@@ -17,13 +18,13 @@
       <div class="logo">TC</div>
       <div>
         <h1>TEER Consignment</h1>
-        <div class="sub">UK hospital stock · <span id="who-label">UK TEER team</span></div>
+        <div class="sub" id="who-label">UK TEER team</div>
       </div>
     </div>
     <div class="badge-row">
       <span class="pill warn" id="live-pill">This phone only</span>
-      <span class="pill">Not official Abbott software</span>
     </div>
+    <div class="header-note">Not official Abbott software. Not the system of record.</div>
   </header>
 
   <main class="wrap">
@@ -31,11 +32,11 @@
       <div class="grid-4" id="home-kpis">
         <button class="kpi ok" type="button" data-kpi="stock"><div class="n" id="k-units">0</div><div class="l">In stock</div></button>
         <button class="kpi" type="button" data-kpi="sites"><div class="n" id="k-sites">0</div><div class="l">Sites</div></button>
-        <button class="kpi warn" type="button" data-kpi="exp90"><div class="n" id="k-exp">0</div><div class="l">≤90 days</div></button>
-        <button class="kpi bad" type="button" data-kpi="exp30"><div class="n" id="k-hot">0</div><div class="l">≤30 days</div><div class="tiny" id="k-expired"></div></button>
+        <button class="kpi warn" type="button" data-kpi="exp90"><div class="n" id="k-exp">0</div><div class="l">Within 90 days</div></button>
+        <button class="kpi bad" type="button" data-kpi="exp30"><div class="n" id="k-hot">0</div><div class="l">Within 30 days</div><div class="tiny" id="k-expired"></div></button>
       </div>
       <div class="card" id="demo-banner" style="display:none;margin-top:12px"></div>
-      <div class="card" style="margin-top:12px">
+      <div class="card" id="my-sites-card" style="margin-top:12px">
         <h2>My sites</h2>
         <div id="my-sites"></div>
       </div>

@@ -268,7 +268,7 @@ function renderHome() {
     }).join("");
     if (!body) return `<div class="empty">No ${esc(group.family)} on the board yet</div>`;
     const title = chosen === "All" ? `<h3 class="matrix-family">${esc(group.family)}</h3>` : "";
-    return `${title}<div class="matrix-scroll"><table class="matrix"><thead><tr><th>Hospital</th>${group.sizes.map((size) => `<th>${esc(size)}</th>`).join("")}</tr></thead><tbody>${body}</tbody></table></div>`;
+    return `${title}<div class="matrix-scroll"><table class="matrix"><thead><tr><th>Hospital</th>${group.sizes.map((size) => `<th>${esc(size === "SGC" ? "Guide" : size)}</th>`).join("")}</tr></thead><tbody>${body}</tbody></table></div>`;
   }).join("");
   const matrixEl = document.getElementById("matrix");
   if (matrixEl) matrixEl.innerHTML = matrix || `<div class="empty">No stock yet</div>`;
