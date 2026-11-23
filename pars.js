@@ -22,22 +22,49 @@ function parAmount(pars, hospitalId, family, size) {
   return Math.min(99, Math.round(amount));
 }
 
-function countInStock(units, hospitalId, family, size, catalogOf) {
+// Expired stock is still on the shelf, but it cannot go into a case, so it never
+// counts towards a par level, a matrix number or a hospital that could lend.
+function unitExpired(unit, now) {
+  const days = daysUntilExpiry(unit && unit.expiry, now || new Date());
+  return days != null && days < 0;
+}
+
+function unitUsable(unit, now) {
+  return !!unit && unit.status === "in-stock" && !unitExpired(unit, now);
+}
+
+function countInStock(units, hospitalId, family, size, catalogOf, now) {
   return (units || []).filter((unit) => {
-    if (!unit || unit.status !== "in-stock" || unit.hospitalId !== hospitalId) return false;
+    if (!unitUsable(unit, now) || unit.hospitalId !== hospitalId) return false;
     const item = catalogOf(unit.sku) || {};
     return item.family === family && item.size === size;
   }).length;
 }
 
-function reorderDeficits(hospitals, units, pars, catalogOf) {
+function countExpired(units, hospitalId, family, size, catalogOf, now) {
+  return (units || []).filter((unit) => {
+    if (!unit || unit.status !== "in-stock" || unit.hospitalId !== hospitalId || !unitExpired(unit, now)) return false;
+    const item = catalogOf(unit.sku) || {};
+    return item.family === family && item.size === size;
+  }).length;
+}
+
+function countInbound(units, hospitalId, family, size, catalogOf) {
+  return (units || []).filter((unit) => {
+    if (!unit || unit.status !== "in-transit" || unit.hospitalId !== hospitalId) return false;
+    const item = catalogOf(unit.sku) || {};
+    return item.family === family && item.size === size;
+  }).length;
+}
+
+function reorderDeficits(hospitals, units, pars, catalogOf, now) {
   const lines = [];
   (hospitals || []).forEach((hospital) => {
     MATRIX_FAMILIES.forEach((group) => {
       group.sizes.forEach((size) => {
         const par = parAmount(pars, hospital.id, group.family, size);
         if (!par) return;
-        const have = countInStock(units, hospital.id, group.family, size, catalogOf);
+        const have = countInStock(units, hospital.id, group.family, size, catalogOf, now);
         if (have >= par) return;
         lines.push({
           hospitalId: hospital.id,
@@ -47,7 +74,8 @@ function reorderDeficits(hospitals, units, pars, catalogOf) {
           have,
           par,
           short: par - have,
-          atZero: have === 0
+          atZero: have === 0,
+          inbound: countInbound(units, hospital.id, group.family, size, catalogOf)
         });
       });
     });
@@ -68,7 +96,8 @@ function demoPars() {
     family,
     familyKey: familyKey(family),
     size,
-    par
+    par,
+    demo: true
   }));
 }
 
@@ -153,9 +182,9 @@ function groupByHospital(units, hospitalOf) {
   return groups;
 }
 
-function countKindInStock(units, hospitalId, family, kind, catalogOf) {
+function countKindInStock(units, hospitalId, family, kind, catalogOf, now) {
   return (units || []).filter((unit) => {
-    if (!unit || unit.status !== "in-stock" || unit.hospitalId !== hospitalId) return false;
+    if (!unitUsable(unit, now) || unit.hospitalId !== hospitalId) return false;
     const item = catalogOf(unit.sku) || {};
     return item.family === family && item.kind === kind;
   }).length;
@@ -168,7 +197,7 @@ function holdersOf(hospitals, units, catalogOf, spec) {
   (hospitals || []).forEach((hospital) => {
     if (!hospital || hospital.id === need.exceptHospitalId) return;
     const have = (units || []).filter((unit) => {
-      if (!unit || unit.status !== "in-stock" || unit.hospitalId !== hospital.id) return false;
+      if (!unitUsable(unit, need.now) || unit.hospitalId !== hospital.id) return false;
       const item = catalogOf(unit.sku) || {};
       if (need.family && item.family !== need.family) return false;
       if (need.size && item.size !== need.size) return false;
@@ -187,7 +216,7 @@ function lendCandidates(hospitals, units, pars, catalogOf, need) {
   const out = [];
   (hospitals || []).forEach((hospital) => {
     if (!hospital || hospital.id === spec.hospitalId) return;
-    const have = countInStock(units, hospital.id, spec.family, spec.size, catalogOf);
+    const have = countInStock(units, hospital.id, spec.family, spec.size, catalogOf, spec.now);
     if (!have) return;
     const par = parAmount(pars, hospital.id, spec.family, spec.size);
     out.push({
@@ -203,12 +232,12 @@ function lendCandidates(hospitals, units, pars, catalogOf, need) {
   return out;
 }
 
-function guideGaps(hospitals, units, catalogOf) {
+function guideGaps(hospitals, units, catalogOf, now) {
   const lines = [];
   (hospitals || []).forEach((hospital) => {
     MATRIX_FAMILIES.forEach((group) => {
-      const clips = countKindInStock(units, hospital.id, group.family, "CDS", catalogOf);
-      const guides = countKindInStock(units, hospital.id, group.family, "SGC", catalogOf);
+      const clips = countKindInStock(units, hospital.id, group.family, "CDS", catalogOf, now);
+      const guides = countKindInStock(units, hospital.id, group.family, "SGC", catalogOf, now);
       if (clips > 0 && guides === 0) {
         lines.push({
           hospitalId: hospital.id,
@@ -232,20 +261,20 @@ function formatLenders(lenders) {
 }
 
 function formatReorderLine(line) {
-  const base = line.hospital + ": " + line.family + " " + line.size + " has " + line.have + ", par " + line.par + ", short " + line.short;
+  const base = line.hospital + ": " + line.family + " " + line.size + " has " + line.have + ", par " + line.par + ", short " + line.short + (line.inbound ? " (" + line.inbound + " in transit)" : "");
   const where = formatLenders(line.lenders);
   return where ? base + ". Also at " + where : base + ". Nowhere else in stock";
 }
 
-function shortageBoard(hospitals, units, pars, catalogOf) {
-  const deficits = reorderDeficits(hospitals, units, pars, catalogOf).map((line) => {
-    const lenders = lendCandidates(hospitals, units, pars, catalogOf, line);
+function shortageBoard(hospitals, units, pars, catalogOf, now) {
+  const deficits = reorderDeficits(hospitals, units, pars, catalogOf, now).map((line) => {
+    const lenders = lendCandidates(hospitals, units, pars, catalogOf, Object.assign({}, line, { now }));
     return Object.assign({}, line, { lenders });
   });
-  const gaps = guideGaps(hospitals, units, catalogOf).map((gap) => {
+  const gaps = guideGaps(hospitals, units, catalogOf, now).map((gap) => {
     return Object.assign({}, gap, {
-      looseGuides: holdersOf(hospitals, units, catalogOf, { family: gap.family, kinds: ["SGC"], exceptHospitalId: gap.hospitalId }),
-      bundles: holdersOf(hospitals, units, catalogOf, { family: gap.family, kinds: ["BUNDLE"], exceptHospitalId: gap.hospitalId })
+      looseGuides: holdersOf(hospitals, units, catalogOf, { family: gap.family, kinds: ["SGC"], exceptHospitalId: gap.hospitalId, now }),
+      bundles: holdersOf(hospitals, units, catalogOf, { family: gap.family, kinds: ["BUNDLE"], exceptHospitalId: gap.hospitalId, now })
     });
   });
   return { deficits, guideGaps: gaps };
@@ -283,6 +312,10 @@ if (typeof module !== "undefined" && module.exports) {
     parDocId,
     parAmount,
     countInStock,
+    countExpired,
+    countInbound,
+    unitExpired,
+    unitUsable,
     reorderDeficits,
     demoPars,
     mergeParLists,

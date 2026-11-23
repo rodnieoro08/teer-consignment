@@ -18,7 +18,7 @@ function load() {
     if (!raw) {
       state.units = demoUnits();
       state.pars = demoPars();
-      state.events = [{ id: crypto.randomUUID(), at: new Date().toISOString(), text: "Demo consignment loaded. Replace with your real serials." }];
+      state.events = [{ id: crypto.randomUUID(), at: new Date().toISOString(), text: "Demo consignment loaded. These are example units." }];
       save();
       return;
     }
@@ -144,10 +144,11 @@ function daysTo(exp) {
 function expiryNote(expiry) {
   const days = daysTo(expiry);
   if (!expiry) return { text: "No expiry", cls: "" };
-  if (days < 0) return { text: "Expired", cls: "exp-bad" };
+  if (days < 0) return { text: "Expired " + formatDate(expiry), cls: "exp-bad" };
+  if (days === 0) return { text: "Expires today", cls: "exp-bad" };
   if (days <= 30) return { text: days + "d left", cls: "exp-bad" };
   if (days <= 90) return { text: days + "d left", cls: "exp-warn" };
-  return { text: expiry, cls: "" };
+  return { text: formatDate(expiry), cls: "" };
 }
 function shortSite(hospital) {
   const name = (hospital && hospital.name) || "";
@@ -254,12 +255,14 @@ function renderHome() {
       const cells = group.sizes.map((size) => {
         const have = countInStock(state.units, hospital.id, group.family, size, catalogOf);
         const par = parAmount(state.pars, hospital.id, group.family, size);
-        return { have, par, size };
+        const expired = countExpired(state.units, hospital.id, group.family, size, catalogOf);
+        return { have, par, size, expired };
       });
-      if (!cells.some((cell) => cell.have || cell.par)) return "";
+      if (!cells.some((cell) => cell.have || cell.par || cell.expired)) return "";
       return `<tr><td>${esc(shortSite(hospital))}<div class="tiny">${esc(hospital.city)}</div></td>${cells.map((cell) => {
         const cls = cellTone(cell.have, cell.par);
-        const note = cell.par > 0 ? `<div class="tiny">${cell.have === 0 ? "at zero" : cell.have < cell.par ? "below " + cell.par : "par " + cell.par}</div>` : "";
+        const parNote = cell.par > 0 ? `<div class="tiny">${cell.have === 0 ? "at zero" : cell.have < cell.par ? "below " + cell.par : "par " + cell.par}</div>` : "";
+        const note = parNote + (cell.expired ? `<div class="tiny exp-bad">+${cell.expired} exp</div>` : "");
         return `<td><button type="button" class="cell ${cls}" data-matrix-cell="1" data-h="${esc(hospital.id)}" data-f="${esc(group.family)}" data-s="${esc(cell.size)}">${cell.have}${note}</button></td>`;
       }).join("")}</tr>`;
     }).join("");
@@ -274,7 +277,7 @@ function renderHome() {
   board.deficits.slice(0, 6).forEach((line) => {
     const where = formatLenders(line.lenders);
     const badge = line.atZero ? "At zero" : "Below par";
-    alerts.push(`<button type="button" class="flag-btn" data-alert="shortage" data-h="${esc(line.hospitalId)}" data-f="${esc(line.family)}" data-s="${esc(line.size)}"><b>${esc(badge)}</b> · ${esc(shortSite(hospitalOf(line.hospitalId)))} · ${esc(line.family)} ${esc(line.size)} · ${line.have} of ${line.par}${where ? `<div class="tiny">Also at ${esc(where)}</div>` : `<div class="tiny">Nowhere else in stock</div>`}</button>`);
+    alerts.push(`<button type="button" class="flag-btn" data-alert="shortage" data-h="${esc(line.hospitalId)}" data-f="${esc(line.family)}" data-s="${esc(line.size)}"><b>${esc(badge)}</b> · ${esc(shortSite(hospitalOf(line.hospitalId)))} · ${esc(line.family)} ${esc(line.size)} · ${line.have} of ${line.par}${line.inbound ? ` · ${line.inbound} on the way` : ""}${where ? `<div class="tiny">Also at ${esc(where)}</div>` : `<div class="tiny">Nowhere else in stock</div>`}</button>`);
   });
   if (board.deficits.length > 6) {
     alerts.push(`<button type="button" class="flag-btn" data-alert="all-short">Show all ${board.deficits.length} short lines</button>`);
@@ -282,7 +285,11 @@ function renderHome() {
   board.guideGaps.slice(0, 4).forEach((gap) => {
     alerts.push(`<button type="button" class="flag-btn" data-alert="guide" data-h="${esc(gap.hospitalId)}" data-f="${esc(gap.family)}"><b>Needs a guide</b> · ${esc(shortSite(hospitalOf(gap.hospitalId)))} · ${esc(gap.family)} · ${gap.clips} loose clip${gap.clips === 1 ? "" : "s"}</button>`);
   });
-  exp30.slice().sort((a, b) => daysTo(a.expiry) - daysTo(b.expiry)).slice(0, 4).forEach((unit) => {
+  if (expired.length) {
+    const sites = new Set(expired.map((unit) => unit.hospitalId)).size;
+    alerts.push(`<button type="button" class="flag-btn" data-alert="expired"><b class="exp-bad">Expired on the shelf</b> · ${expired.length} unit${expired.length === 1 ? "" : "s"} at ${sites} hospital${sites === 1 ? "" : "s"}<div class="tiny">Not counted as stock. Quarantine or return them.</div></button>`);
+  }
+  exp30.filter((unit) => daysTo(unit.expiry) >= 0).sort((a, b) => daysTo(a.expiry) - daysTo(b.expiry)).slice(0, 4).forEach((unit) => {
     const note = expiryNote(unit.expiry);
     const item = catalogOf(unit.sku);
     alerts.push(`<button type="button" class="flag-btn" data-alert="unit" data-unit="${esc(unit.id)}">${esc(item.family)} ${esc(item.size)} ${esc(unit.serial)} · ${esc(shortSite(hospitalOf(unit.hospitalId)))} · ${esc(note.text)}</button>`);
@@ -291,6 +298,7 @@ function renderHome() {
   document.getElementById("activity").innerHTML = state.events.slice(0, activityShown).map((event) => `<div class="row"><div><div class="t">${esc(event.text)}</div><div class="m">${esc(new Date(event.at).toLocaleString("en-GB"))}${event.by ? " · " + esc(event.by) : ""}</div></div></div>`).join("") || `<div class="empty">No activity yet</div>`;
   const earlier = document.getElementById("btn-earlier");
   if (earlier) earlier.style.display = hasEarlierActivity() ? "block" : "none";
+  if (typeof renderFlowsHome === "function") renderFlowsHome();
 }
 function readFindQuery() {
   return {
@@ -327,12 +335,12 @@ function renderFind() {
   if (query.expiry === "expired") bits.push("expired");
   else if (query.expiry === "30") bits.push("within 30 days");
   else if (query.expiry === "90") bits.push("within 90 days");
-  if (query.status && query.status !== "in-stock") bits.push(query.status);
+  if (query.status && query.status !== "in-stock") bits.push(statusLabel(query.status).toLowerCase());
   else if (!query.status) bits.push("any status");
   if (summary) summary.textContent = (bits.length ? bits.join(" · ") + " · " : "") + tally;
   const more = document.querySelector("#find-more summary");
   if (more) {
-    const active = [query.size, query.family, query.expiry && query.expiry !== "" ? "expiry" : "", query.status && query.status !== "in-stock" ? query.status : ""].filter(Boolean);
+    const active = [query.size, query.family, query.expiry && query.expiry !== "" ? "expiry" : "", query.status && query.status !== "in-stock" ? statusLabel(query.status).toLowerCase() : ""].filter(Boolean);
     more.textContent = active.length ? "Filters · " + active.join(", ") : "Filters";
   }
   if (!units.length) {
@@ -384,7 +392,9 @@ function unitCard(u, opts) {
   const c = catalogOf(u.sku); const h = hospitalOf(u.hospitalId); const exp = expiryNote(u.expiry);
   const lot = u.lot ? " · lot " + esc(u.lot) : "";
   const place = opts && opts.place === false ? "" : esc(shortSite(h));
-  return `<button class="list-btn" onclick="openUnit('${escJs(u.id)}')"><div class="row"><div><div class="t">${esc(u.serial)}</div><div class="m">${esc(c.family)} · ${esc(c.sku)}${lot}</div><span class="chip ${chipClass(c.size)}">${esc(c.size)}</span><span class="chip ${u.status === "in-stock" ? "in" : u.status === "used" ? "used" : "xfer"}">${esc(u.status)}</span></div><div class="r">${place ? `<div>${place}</div>` : ""}<div class="${exp.cls}">${esc(exp.text)}</div></div></div></button>`;
+  const first = opts && opts.first ? `<span class="chip first">Use first</span>` : "";
+  const when = opts && opts.when ? `<div>${esc(opts.when)}</div>` : "";
+  return `<button type="button" class="list-btn" onclick="openUnit('${escJs(u.id)}')"><div class="row"><div><div class="t">${esc(u.serial)}</div><div class="m">${esc(c.family)} · ${esc(c.sku)}${lot}</div><span class="chip ${chipClass(c.size)}">${esc(c.size)}</span><span class="chip ${u.status === "in-stock" ? "in" : u.status === "used" ? "used" : "xfer"}">${esc(statusLabel(u.status))}</span>${first}</div><div class="r">${place ? `<div>${place}</div>` : ""}${when}<div class="${exp.cls}">${esc(exp.text)}</div></div></div></button>`;
 }
 function renderHospitals() {
   const q = (document.getElementById("hosp-q").value || "").trim().toLowerCase();
@@ -425,7 +435,8 @@ function renderHospitals() {
     }).filter(Boolean).join(" · ");
     const short = board.deficits.filter((line) => line.hospitalId === hospital.id).length;
     const guide = guideIds.has(hospital.id) ? `<span class="chip xtw">Needs a guide</span>` : "";
-    return `<div class="card hospital-card" onclick="openHospital('${escJs(hospital.id)}')"><div class="row" style="padding-top:0"><div><div class="t">${esc(hospital.name)}</div><div class="m">${esc(hospital.city)} · ${esc(hospital.region)}</div><div class="tiny">${families || "No stock recorded"}</div>${short ? `<span class="chip used">${short} below par</span>` : ""}${guide}</div><div class="r"><b>${counts.total}</b><div>in stock</div></div></div></div>`;
+    const pin = typeof isPinned === "function" && isPinned(hospital.id) ? `<span class="chip sgc">Pinned</span>` : "";
+    return `<button type="button" class="card hospital-card" data-open-hospital="${esc(hospital.id)}"><div class="row" style="padding-top:0"><div><div class="t">${esc(hospital.name)}</div><div class="m">${esc(hospital.city)} · ${esc(hospital.region)}</div><div class="tiny">${families || "No stock recorded"}</div>${short ? `<span class="chip used">${short} below par</span>` : ""}${guide}${pin}</div><div class="r"><b>${counts.total}</b><div>in stock</div></div></div></button>`;
   }).join("");
   const empty = filter === "guide"
     ? "Every loose clip in this view has a guide, or the site only holds bundles."
@@ -453,30 +464,51 @@ function openHospital(id) {
   const h = hospitalOf(id);
   rememberHospital(id);
   save();
-  const units = state.units.filter((unit) => unit.hospitalId === id).sort((a, b) => {
-    if (a.status !== b.status) return a.status === "in-stock" ? -1 : b.status === "in-stock" ? 1 : a.status.localeCompare(b.status);
-    return daysTo(a.expiry) - daysTo(b.expiry);
-  });
+  const all = state.units.filter((unit) => unit.hospitalId === id).sort((a, b) => daysTo(a.expiry) - daysTo(b.expiry));
+  const shelf = all.filter(inStock);
+  const inbound = all.filter((unit) => unit.status === "in-transit");
+  const other = all.filter((unit) => unit.status !== "in-stock" && unit.status !== "in-transit");
+  const first = useFirstIds(shelf, catalogOf, new Date());
   const board = shortageBoard([h], state.units, state.pars, catalogOf);
-  const flags = board.guideGaps.map((gap) => `<button type="button" class="flag-btn" data-alert="guide" data-h="${esc(id)}" data-f="${esc(gap.family)}">Needs a guide · ${esc(gap.family)} · ${gap.clips} loose clip${gap.clips === 1 ? "" : "s"}</button>`).join("")
-    + board.deficits.slice(0, 4).map((line) => `<button type="button" class="flag-btn" data-alert="shortage" data-h="${esc(id)}" data-f="${esc(line.family)}" data-s="${esc(line.size)}">${line.atZero ? "At zero" : "Below par"} · ${esc(line.family)} ${esc(line.size)} · ${line.have} of ${line.par}</button>`).join("");
-  showModal(`<h2>${esc(h.name)}</h2><p class="hint">${esc(h.city)} · ${esc(h.region)}</p>${flags}<button class="primary" onclick="prepScan('${escJs(id)}')">Scan into this hospital</button><div style="margin-top:12px">${units.map((unit) => unitCard(unit, { place: false })).join("") || "<div class='empty'>No units recorded</div>"}</div>${parEditor(id)}<button class="secondary" onclick="closeModal()">Close</button>`);
+  const summary = siteSummary(id);
+  const flags = board.guideGaps.map((gap) => `<button type="button" class="flag-btn" data-alert="guide" data-h="${esc(id)}" data-f="${esc(gap.family)}"><b>Needs a guide</b> · ${esc(gap.family)} · ${gap.clips} loose clip${gap.clips === 1 ? "" : "s"}</button>`).join("")
+    + board.deficits.slice(0, 4).map((line) => `<button type="button" class="flag-btn" data-alert="shortage" data-h="${esc(id)}" data-f="${esc(line.family)}" data-s="${esc(line.size)}"><b>${line.atZero ? "At zero" : "Below par"}</b> · ${esc(line.family)} ${esc(line.size)} · ${line.have} of ${line.par}${line.inbound ? ` · ${line.inbound} on the way` : ""}</button>`).join("");
+  const checked = lastCheckFor(state.events, h.name);
+  const checkedLine = checked ? `Last stock check ${esc(formatDate(checked.at))}${checked.by ? " by " + esc(checked.by) : ""} · ${checked.found} of ${checked.total} found` : "No stock check recorded yet";
+  const pinned = isPinned(id);
+  const list = (units, opts) => units.map((unit) => unitCard(unit, Object.assign({ place: false, first: first.has(unit.id) }, opts || {}))).join("");
+  showModal(`<h2>${esc(h.name)}</h2><p class="hint">${esc([h.city, h.region].filter((part, i, list) => part && list.indexOf(part) === i).join(" · "))}<br>${checkedLine}</p>`
+    + `<div class="kit">${kitHtml(summary)}${summary.expired ? `<div class="tiny exp-bad" style="margin-top:6px">${summary.expired} expired on the shelf, not counted above</div>` : ""}</div>`
+    + flags
+    + `<div class="btn-row"><button class="primary" type="button" onclick="prepScan('${escJs(id)}')">Scan a box in</button><button class="secondary" type="button" data-flow="start-check" data-h="${esc(id)}">Stock check</button></div>`
+    + `<div class="btn-row"><button class="secondary" type="button" data-flow="pin" data-h="${esc(id)}">${pinned ? "Unpin from Home" : "Pin to Home"}</button><button class="secondary" type="button" data-flow="share-site" data-h="${esc(id)}">Share stock list</button></div>`
+    + `<h3 class="matrix-family">On the shelf · ${shelf.length}</h3>${list(shelf) || "<div class='empty'>Nothing in stock here</div>"}`
+    + (inbound.length ? `<h3 class="matrix-family">On the way · ${inbound.length}</h3>${list(inbound)}` : "")
+    + (other.length ? `<details class="find-more"><summary>Used and quarantined · ${other.length}</summary>${list(other)}</details>` : "")
+    + parEditor(id));
 }
 function openShelf(hospitalId, family, size) {
   const hospital = hospitalOf(hospitalId);
   const units = unitsOnShelf(hospitalId, family, size);
   const par = parAmount(state.pars, hospitalId, family, size);
   const lenders = lendCandidates(state.hospitals, state.units, state.pars, catalogOf, { hospitalId, family, size });
-  const short = units.length === 0 || (par > 0 && units.length < par);
-  showModal(`<h2>${esc(hospital.name)}</h2><p class="hint">${esc(family)} ${esc(size)} · ${units.length} in stock${par ? " · par " + par : ""}</p>${units.map((unit) => unitCard(unit, { place: false })).join("") || `<div class="empty">Empty shelf</div>`}${short ? `<h2 class="matrix-family">Who else has it</h2>${lenderButtons(lenders, family, size)}` : ""}<button class="secondary" type="button" onclick="closeModal()">Close</button>`);
+  const have = units.filter((unit) => !unitExpired(unit)).length;
+  const short = have === 0 || (par > 0 && have < par);
+  const first = useFirstIds(units, catalogOf, new Date());
+  showModal(`<h2>${esc(hospital.name)}</h2><p class="hint">${esc(family)} ${esc(size)} · ${have} ready to use${units.length > have ? " · " + (units.length - have) + " expired" : ""}${par ? " · par " + par : ""}${inboundNote(hospitalId, family, size)}</p>${units.map((unit) => unitCard(unit, { place: false, first: first.has(unit.id) })).join("") || `<div class="empty">Empty shelf</div>`}${short ? `<h3 class="matrix-family">Who else has it</h3>${lenderButtons(lenders, family, size)}` : ""}`);
+}
+function inboundNote(hospitalId, family, size) {
+  const n = countInbound(state.units, hospitalId, family, size, catalogOf);
+  return n ? " · " + n + " on the way" : "";
 }
 function openShortage(hospitalId, family, size) {
   const hospital = hospitalOf(hospitalId);
   const units = unitsOnShelf(hospitalId, family, size);
   const par = parAmount(state.pars, hospitalId, family, size);
   const lenders = lendCandidates(state.hospitals, state.units, state.pars, catalogOf, { hospitalId, family, size });
-  const badge = units.length === 0 ? "At zero" : "Below par";
-  showModal(`<h2>${esc(badge)}</h2><p class="hint">${esc(hospital.name)} · ${esc(family)} ${esc(size)} · ${units.length} of ${par}</p>${units.map((unit) => unitCard(unit, { place: false })).join("")}<h2 class="matrix-family">Who can lend</h2><p class="hint">Spare means that hospital stays at or above its own par after one unit leaves. No par means the whole quantity can move.</p>${lenderButtons(lenders, family, size)}<button class="secondary" type="button" onclick="closeModal()">Close</button>`);
+  const have = units.filter((unit) => !unitExpired(unit)).length;
+  const badge = have === 0 ? "At zero" : "Below par";
+  showModal(`<h2>${esc(badge)}</h2><p class="hint">${esc(hospital.name)} · ${esc(family)} ${esc(size)} · ${have} of ${par}${units.length > have ? " · " + (units.length - have) + " expired" : ""}${inboundNote(hospitalId, family, size)}</p>${units.map((unit) => unitCard(unit, { place: false })).join("")}<h3 class="matrix-family">Who can lend</h3><p class="hint">Spare means that hospital stays at or above its own par after one unit leaves. No par means the whole quantity can move.</p>${lenderButtons(lenders, family, size)}`);
 }
 function openAllShortages() {
   const board = shortageBoard(state.hospitals, state.units, state.pars, catalogOf);
@@ -484,7 +516,7 @@ function openAllShortages() {
     const where = formatLenders(line.lenders);
     return `<button type="button" class="flag-btn" data-alert="shortage" data-h="${esc(line.hospitalId)}" data-f="${esc(line.family)}" data-s="${esc(line.size)}"><b>${line.atZero ? "At zero" : "Below par"}</b> · ${esc(line.hospital)} · ${esc(line.family)} ${esc(line.size)} · ${line.have} of ${line.par}${where ? `<div class="tiny">Also at ${esc(where)}</div>` : `<div class="tiny">Nowhere else in stock</div>`}</button>`;
   }).join("");
-  showModal(`<h2>Short lines</h2>${rows || `<div class="empty">Nothing is below par</div>`}<button class="secondary" type="button" onclick="closeModal()">Close</button>`);
+  showModal(`<h2>Short lines</h2>${rows || `<div class="empty">Nothing is below par</div>`}`);
 }
 function openGuideGap(hospitalId, family) {
   const hospital = hospitalOf(hospitalId);
@@ -494,7 +526,7 @@ function openGuideGap(hospitalId, family) {
   const bundles = holdersOf(state.hospitals, state.units, catalogOf, { family, kinds: ["BUNDLE"], exceptHospitalId: hospitalId });
   const guideRows = guides.map((site) => `<button type="button" class="flag-btn" data-open-shelf="1" data-h="${esc(site.hospitalId)}" data-f="${esc(family)}" data-s="SGC"><b>${esc(site.hospital)}</b> · ${site.have} guide${site.have === 1 ? "" : "s"}<div class="tiny">${esc(site.city)}</div></button>`).join("") || `<div class="empty">No loose guide at another hospital</div>`;
   const bundleRows = bundles.map((site) => `<button type="button" class="flag-btn" data-open-hospital="${esc(site.hospitalId)}"><b>${esc(site.hospital)}</b> · ${site.have} whole bundle${site.have === 1 ? "" : "s"}<div class="tiny">${esc(site.city)}</div></button>`).join("") || `<div class="empty">No bundle of this generation elsewhere</div>`;
-  showModal(`<h2>Needs a guide</h2><p class="hint">${esc(hospital.name)} has ${clips} loose ${esc(family)} clip${clips === 1 ? "" : "s"} and no steerable guide. A bundle includes its own guide, so it does not cover these clips.</p><h2 class="matrix-family">Loose guides elsewhere</h2>${guideRows}<h2 class="matrix-family">Whole bundles elsewhere</h2>${bundleRows}<button class="secondary" type="button" onclick="closeModal()">Close</button>`);
+  showModal(`<h2>Needs a guide</h2><p class="hint">${esc(hospital.name)} has ${clips} loose ${esc(family)} clip${clips === 1 ? "" : "s"} and no steerable guide. A bundle includes its own guide, so it does not cover these clips.</p><h3 class="matrix-family">Loose guides elsewhere</h3>${guideRows}<h3 class="matrix-family">Whole bundles elsewhere</h3>${bundleRows}`);
 }
 function parEditor(hospitalId) {
   const blocks = MATRIX_FAMILIES.map(group => {
@@ -506,7 +538,7 @@ function parEditor(hospitalId) {
     }).join("");
     return `<details class="par-block"${open ? " open" : ""}><summary>${esc(group.family)}</summary>${fields}</details>`;
   }).join("");
-  return `<h2 class="matrix-family">Par levels</h2><p class="hint">How many of each size should be on the shelf. Delivery systems and bundles of the same size count together. 0 means this site does not stock that size. G4 and G5 stay separate, and TriClip is not mixed with MitraClip.</p>${blocks}<button class="primary" type="button" onclick="saveHospitalPars('${escJs(hospitalId)}')">Save par levels</button>`;
+  return `<details class="find-more par-wrap"><summary>Par levels</summary><p class="hint" style="margin-top:8px">How many of each size should be on the shelf. Delivery systems and bundles of the same size count together. 0 means this site does not stock that size. G4 and G5 stay separate, and TriClip is not mixed with MitraClip.</p>${blocks}<button class="primary" type="button" style="margin-top:12px" onclick="saveHospitalPars('${escJs(hospitalId)}')">Save par levels</button></details>`;
 }
 async function saveHospitalPars(hospitalId) {
   const inputs = document.querySelectorAll("#modal-body [data-par-size]");
@@ -570,14 +602,36 @@ async function shareReorder() {
   exportReorder();
   toast("Reorder list downloaded");
 }
+function unitActions(u) {
+  const id = escJs(u.id);
+  const site = esc(shortSite(hospitalOf(u.hospitalId)));
+  const transfer = `<button class="secondary" type="button" onclick="startTransfer('${id}')">Borrow / transfer</button>`;
+  const quarantine = `<button class="secondary" type="button" onclick="quarantineUnit('${id}')">Quarantine (damaged or recalled)</button>`;
+  if (u.status === "in-transit") {
+    return `<button class="primary" type="button" onclick="receiveUnit('${id}')">Mark received at ${site}</button>${transfer}`;
+  }
+  if (u.status === "used" || u.status === "quarantine") {
+    return `<button class="primary" type="button" onclick="restoreStock('${id}')">Put back in stock</button>`;
+  }
+  if (unitExpired(u)) {
+    return `<div class="note bad">Expired. Do not use it in a case. It is not counted as stock.</div><button class="primary" type="button" onclick="quarantineUnit('${id}')">Move to quarantine</button>${transfer}`;
+  }
+  return `<button class="primary" type="button" onclick="markUsed('${id}')">Mark used in case</button>${transfer}${quarantine}`;
+}
+function unitHistory(u) {
+  const rows = eventsForSerial(state.events, u.serial).slice(0, 8);
+  if (!rows.length) return "";
+  return `<details class="find-more"><summary>History · ${rows.length}</summary>${rows.map((event) => `<div class="row"><div><div class="t">${esc(event.text)}</div><div class="m">${esc(new Date(event.at).toLocaleString("en-GB"))}${event.by ? " · " + esc(event.by) : ""}</div></div></div>`).join("")}</details>`;
+}
 function openUnit(id) {
   const u = state.units.find(x => x.id === id); if (!u) return;
   const c = catalogOf(u.sku);
   const exp = expiryNote(u.expiry);
-  const caseAction = u.status === "used"
-    ? `<button class="primary" type="button" onclick="restoreStock('${escJs(u.id)}')">Put back in stock</button>`
-    : `<button class="primary" type="button" onclick="markUsed('${escJs(u.id)}')">Mark used in case</button>`;
-  showModal(`<h2>${esc(u.serial)}</h2><p class="hint">${esc(c.family)} · ${esc(c.sku)} · ${esc(c.label)}<br>${esc(hospitalOf(u.hospitalId).name)} · ${esc(u.status)}${u.updatedBy ? "<br>Last edit: " + esc(u.updatedBy) : ""}<br><span class="${exp.cls}">${esc(exp.text)}</span></p>${caseAction}<button class="secondary" type="button" onclick="startTransfer('${escJs(u.id)}')">Borrow / transfer</button><button class="secondary" type="button" onclick="copySerial('${escJs(u.serial)}')">Copy serial</button><details class="find-more"><summary>Edit details</summary><div class="grid-2"><div class="field"><label>SKU</label><select id="u-sku">${skuOptions(u.sku)}</select></div><div class="field"><label>Hospital</label><select id="u-hosp">${hospOptions(u.hospitalId)}</select></div><div class="field"><label>Serial</label><input id="u-sn" value="${esc(u.serial)}"></div><div class="field"><label>Expiry</label><input id="u-exp" type="date" value="${esc(u.expiry || "")}"></div><div class="field"><label>Status</label><select id="u-st"><option ${u.status==="in-stock"?"selected":""}>in-stock</option><option ${u.status==="used"?"selected":""}>used</option><option ${u.status==="in-transit"?"selected":""}>in-transit</option><option ${u.status==="quarantine"?"selected":""}>quarantine</option></select></div><div class="field"><label>Lot</label><input id="u-lot" value="${esc(u.lot || "")}"></div><div class="field span2"><label>Notes</label><textarea id="u-notes">${esc(u.notes || "")}</textarea></div></div><button class="primary" type="button" onclick="saveUnit('${escJs(u.id)}')">Save</button><button class="danger" type="button" onclick="deleteUnit('${escJs(u.id)}')">Delete unit</button></details>`);
+  const from = u.status === "in-transit" ? transitFrom(u) : "";
+  const where = (from ? esc(from) + " → " : "") + esc(hospitalOf(u.hospitalId).name);
+  const facts = [u.lot ? "Lot " + esc(u.lot) : "", u.status === "used" && usedDate(u) ? "Used " + esc(formatDate(usedDate(u))) : "", u.updatedBy ? "Last edit " + esc(u.updatedBy) : ""].filter(Boolean).join(" · ");
+  const options = UNIT_STATUSES.map((status) => `<option value="${status}" ${u.status === status ? "selected" : ""}>${esc(statusLabel(status))}</option>`).join("");
+  showModal(`<h2>${esc(u.serial)}</h2><p class="hint">${esc(c.family)} ${esc(c.size)} · ${esc(c.sku)} · ${esc(c.label)}<br>${where} · ${esc(statusLabel(u.status))}${facts ? "<br>" + facts : ""}<br><span class="${exp.cls}">${u.expiry && daysTo(u.expiry) >= 0 ? "Expires " + esc(formatDate(u.expiry)) + (daysTo(u.expiry) <= 90 ? " · " + esc(exp.text) : "") : esc(exp.text)}</span>${u.notes ? "<br>" + esc(u.notes) : ""}</p>${unitActions(u)}<button class="secondary" type="button" onclick="copySerial('${escJs(u.serial)}')">Copy serial</button>${unitHistory(u)}<details class="find-more"><summary>Edit details</summary><div class="grid-2" style="margin-top:8px"><div class="field"><label>SKU</label><select id="u-sku">${skuOptions(u.sku)}</select></div><div class="field"><label>Hospital</label><select id="u-hosp">${hospOptions(u.hospitalId)}</select></div><div class="field"><label>Serial</label><input id="u-sn" value="${esc(u.serial)}"></div><div class="field"><label>Expiry</label><input id="u-exp" type="date" value="${esc(u.expiry || "")}"></div><div class="field"><label>Status</label><select id="u-st">${options}</select></div><div class="field"><label>Lot</label><input id="u-lot" value="${esc(u.lot || "")}"></div><div class="field span2"><label>Notes · no patient details</label><textarea id="u-notes">${esc(u.notes || "")}</textarea></div></div><button class="primary" type="button" style="margin-top:10px" onclick="saveUnit('${escJs(u.id)}')">Save</button><button class="danger" type="button" onclick="deleteUnit('${escJs(u.id)}')">Delete unit</button></details>`);
 }
 function copySerial(serial) {
   const text = String(serial || "");
@@ -607,26 +661,46 @@ async function saveUnit(id) {
   u.hospitalId = nextH;
   u.serial = document.getElementById("u-sn").value.trim();
   u.expiry = document.getElementById("u-exp").value;
+  const wasStatus = u.status;
   u.status = document.getElementById("u-st").value;
   u.lot = document.getElementById("u-lot").value.trim();
   u.notes = document.getElementById("u-notes").value.trim();
+  if (u.status !== wasStatus) u.notes = statusNotes(u.notes, u.status);
   u.updatedAt = new Date().toISOString();
   await saveUnitCloud(u);
   await log(moved ? ("Moved " + u.serial + " to " + hospitalOf(u.hospitalId).name) : ("Updated " + u.serial));
   closeModal(); refresh(); toast(cloud && cloud.live ? "Saved for the team" : "Saved on this phone");
 }
+// Keeps the dated stamps in the notes in step with the status: "Used 2026-11-23"
+// while a unit is used, "In transit from ..." while it is on the road.
+function statusNotes(notes, status) {
+  let next = clearUsedStamp(notes);
+  if (status !== "in-transit") next = clearTransitStamp(next);
+  if (status === "used") next = stampUsed(next, todayStr());
+  return next;
+}
 async function setStatus(id, status, logText, toastText) {
   const u = state.units.find(x => x.id === id);
   if (!u) return;
   const previous = u.status;
-  if (previous === status) { toast("Already " + status); return; }
+  const previousNotes = u.notes || "";
+  if (previous === status) { toast("Already " + statusLabel(status).toLowerCase()); return; }
   u.status = status;
+  u.notes = statusNotes(u.notes, status);
   u.updatedAt = new Date().toISOString();
   await saveUnitCloud(u);
   await log(logText);
   closeModal();
   refresh();
-  toast(toastText, () => setStatus(id, previous, "Restored " + u.serial + " to " + previous, "Restored"));
+  toast(toastText, async () => {
+    u.status = previous;
+    u.notes = previousNotes;
+    u.updatedAt = new Date().toISOString();
+    await saveUnitCloud(u);
+    await log("Undid: " + u.serial + " is " + statusLabel(previous).toLowerCase() + " again");
+    refresh();
+    toast("Undone");
+  });
 }
 async function markUsed(id) {
   const u = state.units.find(x => x.id === id);
@@ -640,7 +714,8 @@ async function restoreStock(id) {
 }
 async function deleteUnit(id) {
   const u = state.units.find(x => x.id === id);
-  if (!confirm("Delete this unit from the shared list?")) return;
+  if (!u) return;
+  if (!confirm("Delete " + u.serial + " from the " + (cloud && cloud.live ? "shared list" : "list") + "? Use this for a mistake. A unit used in a case should be marked used instead.")) return;
   state.units = state.units.filter(x => x.id !== id);
   if (cloud && cloud.live && typeof cloudDelete === "function") {
     try { await cloudDelete("units", id); } catch (e) { markPendingDelete(id); toast(e.message); }
@@ -652,25 +727,42 @@ async function deleteUnit(id) {
 }
 function startTransfer(id) {
   const u = state.units.find(x => x.id === id);
+  if (!u) return;
   const item = catalogOf(u.sku);
-  const lenders = lendCandidates(state.hospitals, state.units, state.pars, catalogOf, { hospitalId: u.hospitalId, family: item.family, size: item.size });
-  const suggest = lenders.slice(0, 4).map((lender) => {
-    return `<button type="button" class="flag-btn" data-pick-hosp="${esc(lender.hospitalId)}">${esc(lender.hospital)} · ${lender.have} in stock · ${esc(spareNote(lender))}</button>`;
+  const short = shortageBoard(state.hospitals, state.units, state.pars, catalogOf).deficits
+    .filter((line) => line.family === item.family && line.size === item.size && line.hospitalId !== u.hospitalId);
+  const suggest = short.slice(0, 4).map((line) => {
+    return `<button type="button" class="flag-btn" data-pick-hosp="${esc(line.hospitalId)}"><b>${esc(line.hospital)}</b> · ${line.atZero ? "at zero" : "below par"} · ${line.have} of ${line.par}</button>`;
   }).join("");
-  showModal(`<h2>Transfer ${esc(u.serial)}</h2><p class="hint">${esc(item.family)} ${esc(item.size)} · currently at ${esc(hospitalOf(u.hospitalId).name)}</p>${suggest ? `<p class="hint">Sites that already hold this size. Tap one, then move.</p>${suggest}` : `<p class="hint">No other site has this size in stock.</p>`}<div class="field"><label>Send to</label><select id="xfer-to">${hospOptions("", u.hospitalId)}</select></div><div class="field" style="margin-top:8px"><label>Reason</label><input id="xfer-why" placeholder="Case support / borrow"></div><button class="primary" onclick="doTransfer('${escJs(id)}')">Move now</button><button class="secondary" onclick="openUnit('${escJs(id)}')">Back</button>`);
+  const recent = (state.settings.recentHospitals || []).filter((hid) => hid !== u.hospitalId && state.hospitals.some((h) => h.id === hid)).slice(0, 4)
+    .map((hid) => `<button type="button" class="chip-btn" data-pick-hosp="${esc(hid)}">${esc(shortSite(hospitalOf(hid)))}</button>`).join("");
+  showModal(`<h2>Transfer ${esc(u.serial)}</h2><p class="hint">${esc(item.family)} ${esc(item.size)} · currently at ${esc(hospitalOf(u.hospitalId).name)}</p>${suggest ? `<p class="hint">Hospitals short of this size. Tap one to choose it.</p>${suggest}` : ""}<div class="field" style="margin-top:8px"><label>Send to</label>${recent ? `<div class="chip-row" style="margin:0 0 6px">${recent}</div>` : ""}<select id="xfer-to">${hospOptions((short[0] || {}).hospitalId || "", u.hospitalId)}</select></div><div class="field" style="margin-top:8px"><label>Reason · no patient details</label><input id="xfer-why" placeholder="Case support / borrow"></div><button class="primary" type="button" style="margin-top:12px" onclick="doTransfer('${escJs(id)}', true)">Send · in transit until received</button><button class="secondary" type="button" onclick="doTransfer('${escJs(id)}', false)">It is already there · move now</button><button class="secondary" type="button" onclick="openUnit('${escJs(id)}')">Back</button>`);
 }
-async function doTransfer(id) {
+async function doTransfer(id, transit) {
   const u = state.units.find(x => x.id === id);
+  if (!u) return;
   const to = document.getElementById("xfer-to").value;
   const why = document.getElementById("xfer-why").value.trim();
-  if (to === u.hospitalId) { toast("Pick a different hospital"); return; }
+  if (!to || to === u.hospitalId) { toast("Pick a different hospital"); return; }
+  const before = { hospitalId: u.hospitalId, status: u.status, notes: u.notes || "" };
   const from = hospitalOf(u.hospitalId).name;
-  u.hospitalId = to; u.status = "in-stock";
-  u.notes = [u.notes, why ? "Transfer: " + why : "Transfer"].filter(Boolean).join(" | ");
+  u.hospitalId = to;
+  u.status = transit ? "in-transit" : "in-stock";
+  let notes = statusNotes([u.notes, why ? "Transfer: " + why : ""].filter(Boolean).join(" | "), u.status);
+  if (transit) notes = stampTransit(notes, from);
+  u.notes = notes.slice(0, 499);
   u.updatedAt = new Date().toISOString();
+  rememberHospital(to);
   await saveUnitCloud(u);
-  await log("Transferred " + u.serial + " " + from + " → " + hospitalOf(to).name + (why ? " · " + why : ""));
-  closeModal(); refresh(); toast("Transferred");
+  await log((transit ? "Sent " : "Transferred ") + u.serial + " " + from + " → " + hospitalOf(to).name + (transit ? " · in transit" : "") + (why ? " · " + why : ""));
+  closeModal(); refresh();
+  toast(transit ? "In transit to " + shortSite(hospitalOf(to)) : "Moved to " + shortSite(hospitalOf(to)), async () => {
+    Object.assign(u, before, { updatedAt: new Date().toISOString() });
+    await saveUnitCloud(u);
+    await log("Undid: " + u.serial + " is back at " + from);
+    refresh();
+    toast("Undone");
+  });
 }
 function parseUDI(text) {
   const raw = (text || "").trim();
@@ -736,34 +828,50 @@ async function addScanned() {
   const serial = document.getElementById("scan-sn").value.trim();
   const sku = document.getElementById("scan-sku").value;
   const hospitalId = document.getElementById("scan-hosp").value;
+  const lot = document.getElementById("scan-lot").value.trim();
+  const expiry = document.getElementById("scan-exp").value;
   if (!serial || !sku || !hospitalId) { toast("Serial, SKU and hospital required"); return; }
-  const existing = state.units.find(u => u.serial.toLowerCase() === serial.toLowerCase());
-  if (existing && existing.status !== "in-stock") {
-    const ok = confirm(serial + " is marked " + existing.status + " at " + hospitalOf(existing.hospitalId).name + ". Put it back in stock at " + hospitalOf(hospitalId).name + "?");
+  const site = hospitalOf(hospitalId).name;
+  const existing = state.units.find(u => normSerial(u.serial) === normSerial(serial));
+  if (existing && (existing.status === "used" || existing.status === "quarantine")) {
+    const ok = confirm(serial + " is marked " + statusLabel(existing.status).toLowerCase() + " at " + hospitalOf(existing.hospitalId).name + ". Put it back in stock at " + site + "?");
     if (!ok) { toast("No change made"); return; }
   }
+  if (!existing && expiry && daysTo(expiry) < 0) {
+    if (!confirm("This box expired on " + formatDate(expiry) + ". Add it anyway? It will show as expired and will not count as stock.")) { toast("Not added"); return; }
+  }
+  const learned = typeof learnScannedRef === "function" && learnScannedRef(sku);
+  let saved;
   if (existing) {
+    const was = { hospitalId: existing.hospitalId, status: existing.status };
     existing.hospitalId = hospitalId; existing.sku = sku;
-    existing.expiry = document.getElementById("scan-exp").value;
-    existing.lot = document.getElementById("scan-lot").value.trim();
-    existing.status = "in-stock"; existing.updatedAt = new Date().toISOString();
+    // A barcode that only carried the serial must not blank a lot or expiry already on file.
+    if (expiry) existing.expiry = expiry;
+    if (lot) existing.lot = lot;
+    existing.status = "in-stock";
+    existing.notes = statusNotes(existing.notes, "in-stock");
+    existing.updatedAt = new Date().toISOString();
     await saveUnitCloud(existing);
-    await log("Re-scanned " + serial + " at " + hospitalOf(hospitalId).name);
-    toast("Updated existing serial");
+    const moved = was.hospitalId !== hospitalId;
+    if (was.status === "in-transit") await log("Received " + serial + " at " + site);
+    else if (was.status !== "in-stock") await log("Returned " + serial + " to stock at " + site);
+    else if (moved) await log("Moved " + serial + " " + hospitalOf(was.hospitalId).name + " → " + site);
+    else await log("Re-scanned " + serial + " at " + site);
+    toast(was.status === "in-transit" ? "Received at " + shortSite(hospitalOf(hospitalId)) : moved ? "Moved to " + shortSite(hospitalOf(hospitalId)) : "Updated " + serial);
+    saved = existing;
+    if (typeof pushSession === "function") pushSession(was.status === "in-transit" ? "Received" : moved ? "Moved" : "Updated", saved);
   } else {
-    const u = { id: crypto.randomUUID(), hospitalId, sku, serial, lot: document.getElementById("scan-lot").value.trim(), expiry: document.getElementById("scan-exp").value, status: "in-stock", notes: "", createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
+    const u = { id: crypto.randomUUID(), hospitalId, sku, serial, lot, expiry, status: "in-stock", notes: "", createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
     state.units.push(u); await saveUnitCloud(u);
-    await log("Received " + serial + " (" + catalogOf(sku).size + ") at " + hospitalOf(hospitalId).name);
-    toast(cloud && cloud.live ? "On the shared list" : "Added on this phone");
+    await log("Received " + serial + " (" + catalogOf(sku).size + ") at " + site);
+    toast((cloud && cloud.live ? "On the shared list" : "Added on this phone") + (learned ? ". This barcode is remembered as " + sku : ""));
+    saved = u;
+    if (typeof pushSession === "function") pushSession("Added", saved);
   }
   rememberHospital(hospitalId);
+  state.settings.lastSku = sku;
   save();
-  document.getElementById("scan-sn").value = "";
-  document.getElementById("scan-lot").value = "";
-  document.getElementById("scan-exp").value = "";
-  document.getElementById("scan-raw-in").value = "";
-  document.getElementById("scan-raw").textContent = "";
-  if (typeof seenCodes !== "undefined" && seenCodes && seenCodes.clear) seenCodes.clear();
+  if (typeof clearScanForm === "function") clearScanForm();
   refresh();
 }
 async function addHospital() {
@@ -810,23 +918,28 @@ const UNIT_STATUSES = ["in-stock", "used", "in-transit", "quarantine"];
 function importCSV(text) {
   const parsed = csvToUnitRows(text);
   let n = 0;
+  let skipped = 0;
   parsed.forEach(cols => {
     const serial = cols.serial; if (!serial) return;
     const hospName = cols.hospital || "";
     const hosp = state.hospitals.find(h => h.name.toLowerCase() === hospName.toLowerCase()) || state.hospitals.find(h => hospName && h.city && hospName.toLowerCase().includes(h.city.toLowerCase()));
     const sku = cols.sku || "";
     const existing = state.units.find(u => u.serial.toLowerCase() === serial.toLowerCase());
+    // A row with no REF used to be filed as a G5 XTW. Skip it instead of guessing.
+    if (!sku && !existing) { skipped++; return; }
     const status = UNIT_STATUSES.includes(cols.status) ? cols.status : "in-stock";
-    const row = { hospitalId: hosp ? hosp.id : state.settings.lastHospital, sku: sku || "CDS0802-XTW", serial, lot: cols.lot || "", expiry: cols.expiry || "", status, notes: cols.notes || "", updatedAt: new Date().toISOString() };
+    const row = { hospitalId: hosp ? hosp.id : state.settings.lastHospital, sku: sku || existing.sku, serial, lot: cols.lot || "", expiry: cols.expiry || "", status, notes: cols.notes || "", updatedAt: new Date().toISOString() };
     if (existing) Object.assign(existing, row);
     else state.units.push(Object.assign({ id: crypto.randomUUID(), createdAt: new Date().toISOString() }, row));
     const saved = existing || state.units[state.units.length - 1];
     if (!(cloud && cloud.live)) markPendingUnit(saved.id);
     n++;
   });
-  log("Imported CSV (" + n + " rows)");
+  log("Imported CSV (" + n + " rows" + (skipped ? ", " + skipped + " skipped with no REF" : "") + ")");
+  if (skipped) setTimeout(() => toast(skipped + " row" + (skipped === 1 ? "" : "s") + " skipped: no SKU / REF in the file"), 2400);
 }
 function resetDemo() {
+  if (cloud && cloud.live) { toast("Sign out first. Example stock is kept off the shared list."); return; }
   if (!confirm("Replace local data with the demo consignment?")) return;
   state.units = demoUnits();
   state.pars = demoPars();
@@ -835,7 +948,7 @@ function resetDemo() {
 }
 function wipeAll() {
   if (!confirm("Erase every unit on this phone?")) return;
-  state.units = []; state.events = [{ at: new Date().toISOString(), text: "Local stock cleared" }]; save(); refresh();
+  state.units = []; state.events = [{ id: crypto.randomUUID(), at: new Date().toISOString(), text: "Local stock cleared" }]; save(); refresh();
 }
 function showScreen(id) {
   document.querySelectorAll(".screen").forEach(s => s.classList.toggle("active", s.id === "screen-" + id));
@@ -844,11 +957,17 @@ function showScreen(id) {
   if (id === "home") renderHome();
   if (id === "find") renderFind();
   if (id === "scan") renderRecentHospitals();
+  if (id === "scan" && typeof renderScanExtras === "function") renderScanExtras();
   if (id === "hospitals") renderHospitals();
   if (id === "team" && typeof setLiveUi === "function") setLiveUi();
   if (id === "team" && typeof renderAccess === "function") renderAccess();
 }
-function showModal(html) { document.getElementById("modal-body").innerHTML = html; document.getElementById("modal").classList.add("on"); }
+function showModal(html) {
+  const body = document.getElementById("modal-body");
+  body.innerHTML = `<button type="button" class="modal-close" aria-label="Close" onclick="closeModal()">Close</button>` + html;
+  body.scrollTop = 0;
+  document.getElementById("modal").classList.add("on");
+}
 function closeModal() { document.getElementById("modal").classList.remove("on"); }
 function fillFamilySelect() {
   const sel = document.getElementById("find-family");
@@ -888,6 +1007,7 @@ function fillSelects() {
 function refresh() {
   document.getElementById("who-label").textContent = state.settings.specialist || "UK TEER team";
   renderHome(); renderFind(); renderHospitals(); renderRecentHospitals();
+  if (typeof renderScanExtras === "function") renderScanExtras();
   if (typeof setLiveUi === "function") setLiveUi();
 }
 function onBoardClick(e) {
@@ -909,6 +1029,7 @@ function onBoardClick(e) {
     else if (kind === "guide") openGuideGap(alertBtn.getAttribute("data-h"), alertBtn.getAttribute("data-f"));
     else if (kind === "unit") openUnit(alertBtn.getAttribute("data-unit"));
     else if (kind === "all-short") openAllShortages();
+    else if (kind === "expired") applyFind({ q: "", size: "", family: "", status: "in-stock", expiry: "expired", sort: "expiry" });
     return;
   }
   const shelf = e.target.closest("[data-open-shelf]");
@@ -929,6 +1050,7 @@ function onBoardClick(e) {
     rememberHospital(id);
     save();
     renderRecentHospitals();
+    if (typeof renderScanMatch === "function") renderScanMatch();
     return;
   }
   const pick = e.target.closest("[data-pick-hosp]");
@@ -985,6 +1107,7 @@ function bind() {
     renderHospitals();
   });
   document.addEventListener("click", onBoardClick);
+  if (typeof bindFlows === "function") bindFlows();
   document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeModal(); });
   document.getElementById("btn-cam").addEventListener("click", () => window.startCamera());
   document.getElementById("btn-cam-stop").addEventListener("click", () => window.stopCamera());

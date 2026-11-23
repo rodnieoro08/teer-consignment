@@ -237,3 +237,65 @@ button.kpi:active, .cell:active, .flag-btn:active { background: var(--teal-dim);
 }
 .tiny { font-size: 11px; color: var(--muted); }
 code { background: var(--bg); padding: 1px 5px; border-radius: 4px; font-size: 12px; }
+
+/* Sheets, pinned sites, stock check */
+.modal { position: relative; }
+.modal-close {
+  position: sticky; top: 0; float: right; z-index: 2; margin: -4px -4px 0 8px;
+  width: auto; min-height: 36px; padding: 6px 12px; border-radius: 999px;
+  background: var(--card-2); border: 1px solid var(--line); color: var(--text);
+  font: inherit; font-size: 13px; font-weight: 700;
+}
+.modal h2 { font-size: 20px; margin: 0 0 8px; letter-spacing: -0.01em; }
+.modal h3.matrix-family, .card h3.matrix-family { clear: both; }
+button.hospital-card {
+  display: block; width: 100%; text-align: left; font: inherit; color: inherit; cursor: pointer;
+}
+.btn-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px; }
+.btn-row > button { margin-top: 0; padding: 12px 8px; font-size: 14px; }
+.kit { background: var(--bg); border: 1px solid var(--line); border-radius: 12px; padding: 8px 10px; margin-bottom: 4px; }
+.kit-line { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; padding: 3px 0; font-size: 13px; }
+.kit-fam { min-width: 46px; font-size: 11px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+.kit-cell { color: var(--muted); font-weight: 600; white-space: nowrap; }
+.kit-cell b { font-weight: 800; }
+.site-btn {
+  display: block; width: 100%; text-align: left; background: transparent; border: 0;
+  border-bottom: 1px solid var(--line); color: inherit; font: inherit; padding: 10px 0; min-height: 44px;
+}
+.site-btn:first-child { padding-top: 0; }
+.site-btn:last-child { border-bottom: 0; padding-bottom: 0; }
+.site-btn:active { background: var(--teal-dim); }
+.site-btn:focus-visible, .check-row:focus-visible, .modal-close:focus-visible, button.hospital-card:focus-visible {
+  outline: 2px solid var(--teal); outline-offset: 2px;
+}
+.site-top { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; font-size: 15px; margin-bottom: 2px; }
+.chip.first { background: var(--teal-dim); color: var(--teal); }
+.note { font-size: 13px; line-height: 1.4; border-radius: 10px; padding: 9px 10px; margin: 8px 0; border: 1px solid var(--line); }
+.note.warn { color: var(--amber); border-color: rgba(240,180,41,0.35); background: rgba(240,180,41,0.08); }
+.note.bad { color: var(--red); border-color: rgba(255,107,122,0.35); background: rgba(255,107,122,0.08); }
+.match { border: 1px solid var(--teal); background: var(--teal-dim); border-radius: 12px; padding: 10px 12px; margin-bottom: 10px; }
+.match-h { font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--teal); margin-bottom: 4px; }
+.match .t { font-size: 15px; font-weight: 700; }
+.match .m { font-size: 12px; color: var(--muted); margin: 2px 0 8px; }
+.progress { height: 8px; border-radius: 999px; background: var(--bg); border: 1px solid var(--line); overflow: hidden; }
+.progress .bar { height: 100%; background: var(--teal); border-radius: 999px; transition: width 0.2s; }
+.inline { display: grid; grid-template-columns: 1fr auto; gap: 8px; }
+.inline .secondary { margin-top: 0; width: auto; padding: 0 18px; }
+.check-row {
+  display: flex; align-items: center; gap: 10px; width: 100%; text-align: left; background: transparent;
+  border: 0; border-bottom: 1px solid var(--line); color: inherit; font: inherit; padding: 9px 0; min-height: 52px;
+}
+.check-row .tick {
+  flex: none; width: 26px; height: 26px; border-radius: 8px; border: 2px solid var(--line);
+  display: grid; place-items: center; font-weight: 800; color: #042226;
+}
+.check-row.done .tick { background: var(--green); border-color: var(--green); }
+.check-row.done .t { color: var(--muted); }
+.check-main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.check-row .t { font-size: 14px; font-weight: 650; }
+.check-row .m { font-size: 12px; color: var(--muted); }
+.check-row .r { flex: none; text-align: right; font-size: 12px; color: var(--muted); }
+.par-wrap { margin-top: 14px; border-top: 1px solid var(--line); padding-top: 10px; }
+@media (prefers-reduced-motion: reduce) { .progress .bar { transition: none; } }
+/* A sheet's buttons sit at the bottom, so messages move to the top while one is open. */
+body:has(.modal-bg.on) .toast { bottom: auto; top: calc(var(--top) + 12px); }

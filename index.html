@@ -34,7 +34,17 @@
         <button class="kpi warn" type="button" data-kpi="exp90"><div class="n" id="k-exp">0</div><div class="l">≤90 days</div></button>
         <button class="kpi bad" type="button" data-kpi="exp30"><div class="n" id="k-hot">0</div><div class="l">≤30 days</div><div class="tiny" id="k-expired"></div></button>
       </div>
+      <div class="card" id="demo-banner" style="display:none;margin-top:12px"></div>
       <div class="card" style="margin-top:12px">
+        <h2>My sites</h2>
+        <div id="my-sites"></div>
+      </div>
+      <div class="card" id="transit-card" style="display:none">
+        <h2>In transit</h2>
+        <p class="hint">Sent but not yet received. These do not count as stock anywhere until someone marks them received.</p>
+        <div id="transit-list"></div>
+      </div>
+      <div class="card">
         <h2>Need a clip fast</h2>
         <p class="hint">Every hospital, in stock only. After the team signs in, this is the live national list.</p>
         <div class="chip-row" id="quick-sizes">
@@ -48,16 +58,21 @@
       </div>
       <div class="card">
         <h2>Reorder & expiry</h2>
-        <p class="hint">Short lines name who else has that size. A clip with no steerable guide is listed on its own. A bundle includes its own guide and does not cover a loose clip.</p>
+        <p class="hint">Short lines name who else has that size. A clip with no steerable guide is listed on its own. A bundle includes its own guide and does not cover a loose clip. Expired units are not counted as stock.</p>
         <div id="alerts"></div>
         <button class="secondary" id="btn-reorder-csv" type="button">Export reorder list</button>
         <button class="secondary" id="btn-reorder-share" type="button">Share reorder list</button>
       </div>
       <div class="card">
         <h2>National clip matrix</h2>
-        <p class="hint">In-stock units only. Tap a number to see the units, or who else has that size. Red means a size you stock is at zero. Amber is below par. A grey zero is a size that site does not carry.</p>
+        <p class="hint">Units ready to use: in stock and in date. Tap a number to see the units, or who else has that size. Red means a size you stock is at zero. Amber is below par. A grey zero is a size that site does not carry.</p>
         <div class="chip-row" id="matrix-families"></div>
         <div id="matrix"></div>
+      </div>
+      <div class="card">
+        <h2>Used in cases</h2>
+        <p class="hint" id="usage-summary" style="margin-bottom:0"></p>
+        <button class="secondary" type="button" data-flow="usage-open">Usage report</button>
       </div>
       <div class="card">
         <h2>Activity</h2>
@@ -139,18 +154,21 @@
           <input id="scan-photo" type="file" accept="image/*" capture="environment">
         </label>
       </div>
-      <div class="card">
+      <div class="card" id="check-card" style="display:none"></div>
+      <div class="card" id="unit-card">
         <h2>Unit</h2>
         <div class="grid-2">
           <div class="field span2"><label>SKU / REF</label><select id="scan-sku"></select></div>
           <div class="field span2"><label>Lot</label><input id="scan-lot" placeholder="LOT / (10)"></div>
           <div class="field span2"><label>Hospital</label><div class="chip-row" id="recent-hosp"></div><select id="scan-hosp"></select></div>
-          <div class="field span2"><label>Serial</label><input id="scan-sn" placeholder="SN / (91)"></div>
+          <div class="field span2"><label>Serial</label><input id="scan-sn" placeholder="SN / (91)" autocapitalize="characters" autocomplete="off" autocorrect="off" spellcheck="false"></div>
           <div class="field span2"><label>Expiry</label><input id="scan-exp" type="date"></div>
           <div class="field span2"><label>Paste UDI string</label><input id="scan-raw-in" placeholder="only if scan fails"></div>
         </div>
         <div class="tiny" id="scan-raw" style="margin:8px 0"></div>
+        <div id="scan-match"></div>
         <button class="primary" id="btn-add" type="button">Add / update consignment</button>
+        <div id="scan-session"></div>
       </div>
     </section>
 
@@ -223,6 +241,7 @@
       <div class="card">
         <h2>This phone</h2>
         <button class="secondary" id="btn-demo" type="button">Reload demo stock</button>
+        <button class="secondary" id="btn-forget-gtin" type="button" data-flow="forget-gtin" style="display:none">Forget learned barcodes</button>
         <button class="danger" id="btn-wipe" type="button">Clear local stock</button>
         <p class="disclaimer">Personal / team operations helper. Not CE or UKCA marked. Not an Abbott inventory system of record. Do not put patient names in notes. Do not commit live serials or the Firebase config to GitHub.</p>
       </div>
@@ -266,6 +285,8 @@
   <script src="./gs1.js"></script>
   <script src="./sync-merge.js"></script>
   <script src="./pars.js"></script>
+  <script src="./stock.js"></script>
+  <script src="./flows.js"></script>
   <script src="./cloud.js"></script>
   <script src="./app.js"></script>
   <script src="./scan-fix.js"></script>
