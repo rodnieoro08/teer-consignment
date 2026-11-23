@@ -76,37 +76,57 @@ const HOSPITALS = [
   { id: "belfast", name: "Royal Victoria, Belfast", city: "Belfast", region: "Northern Ireland" }
 ];
 
+const DEMO_SERIALS = [
+  "G5XTW10001", "G5XTW10002", "G5NTW10011", "G5NT010021", "G5SGC10031", "G5SGC10032",
+  "G5XTW20001", "G5XT020011", "G5SGC20021", "G5NTW30001", "G5XTW30002", "G5SGC30011",
+  "G4XTW40001", "G4NTW40011", "G4SGC40021", "G5XTW50001", "G5NT060011", "G5SGC60021",
+  "G5XTW70001", "G5NTW80001", "TCXTW90001", "TCSGC90011", "TC5NTW91001"
+];
+
+// Demo units carry demo: true. Phones that loaded the demo before that flag existed
+// are recognised by these exact example serials.
+function isDemoUnit(unit) {
+  return !!unit && (unit.demo === true || DEMO_SERIALS.indexOf(unit.serial) !== -1);
+}
+
 function demoUnits() {
-  const add = (hospitalId, sku, serial, expiry, status = "in-stock") => ({
+  // Dates are relative to today so the demo always shows one expired unit, a few
+  // close to expiry, and the rest comfortably in date.
+  const inDays = (days) => {
+    const d = new Date();
+    d.setDate(d.getDate() + days);
+    return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+  };
+  const add = (hospitalId, sku, serial, days, status = "in-stock") => ({
     id: crypto.randomUUID(),
     hospitalId, sku, serial, lot: serial.slice(0, 6),
-    expiry, status, notes: "",
+    expiry: inDays(days), status, notes: "", demo: true,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString()
   });
   return [
-    add("barts", "CDS0802-XTW", "G5XTW10001", "2027-03-15"),
-    add("barts", "CDS0802-XTW", "G5XTW10002", "2027-03-15"),
-    add("barts", "CDS0802-NTW", "G5NTW10011", "2026-12-01"),
-    add("barts", "CDS0802-NT",  "G5NT010021", "2027-01-20"),
-    add("barts", "SGC0802",     "G5SGC10031", "2027-06-10"),
-    add("barts", "SGC0802",     "G5SGC10032", "2027-06-10"),
-    add("papworth", "CDS0802-XTW", "G5XTW20001", "2027-02-08"),
-    add("papworth", "CDS0802-XT",  "G5XT020011", "2026-11-12"),
-    add("papworth", "SGC0802",     "G5SGC20021", "2027-04-01"),
-    add("wythenshawe", "CDS0802-NTW", "G5NTW30001", "2027-05-22"),
-    add("wythenshawe", "CDS0802-XTW", "G5XTW30002", "2027-05-22"),
-    add("wythenshawe", "SGC0802", "G5SGC30011", "2027-08-14"),
-    add("leeds", "CDS0707-XTW", "G4XTW40001", "2026-10-30"),
-    add("leeds", "CDS0707-NTW", "G4NTW40011", "2026-09-18"),
-    add("leeds", "SGC0707", "G4SGC40021", "2027-01-05"),
-    add("stthomas", "CDS0802-XTW", "G5XTW50001", "2027-07-01"),
-    add("oxford", "CDS0802-NT", "G5NT060011", "2027-03-03"),
-    add("oxford", "SGC0802", "G5SGC60021", "2027-03-03"),
-    add("qehb", "CDS0802-XTW", "G5XTW70001", "2026-10-02"),
-    add("lhch", "CDS0802-NTW", "G5NTW80001", "2027-02-14"),
-    add("papworth", "TCDS0307-XTW", "TCXTW90001", "2027-09-01"),
-    add("papworth", "TSGC0207", "TCSGC90011", "2027-09-01"),
-    add("barts", "TCDS0802-NTW", "TC5NTW91001", "2027-11-01")
+    add("barts", "CDS0802-XTW", "G5XTW10001", 75),
+    add("barts", "CDS0802-XTW", "G5XTW10002", 410),
+    add("barts", "CDS0802-NTW", "G5NTW10011", 21),
+    add("barts", "CDS0802-NT",  "G5NT010021", 58),
+    add("barts", "SGC0802",     "G5SGC10031", 200),
+    add("barts", "SGC0802",     "G5SGC10032", 320),
+    add("papworth", "CDS0802-XTW", "G5XTW20001", 150),
+    add("papworth", "CDS0802-XT",  "G5XT020011", 12),
+    add("papworth", "SGC0802",     "G5SGC20021", 240),
+    add("wythenshawe", "CDS0802-NTW", "G5NTW30001", 280),
+    add("wythenshawe", "CDS0802-XTW", "G5XTW30002", 280),
+    add("wythenshawe", "SGC0802", "G5SGC30011", 365),
+    add("leeds", "CDS0707-XTW", "G4XTW40001", 44),
+    add("leeds", "CDS0707-NTW", "G4NTW40011", -9),
+    add("leeds", "SGC0707", "G4SGC40021", 130),
+    add("stthomas", "CDS0802-XTW", "G5XTW50001", 300),
+    add("oxford", "CDS0802-NT", "G5NT060011", 190),
+    add("oxford", "SGC0802", "G5SGC60021", 190),
+    add("qehb", "CDS0802-XTW", "G5XTW70001", 95),
+    add("lhch", "CDS0802-NTW", "G5NTW80001", 170),
+    add("papworth", "TCDS0307-XTW", "TCXTW90001", 330),
+    add("papworth", "TSGC0207", "TCSGC90011", 330),
+    add("barts", "TCDS0802-NTW", "TC5NTW91001", 390)
   ];
 }

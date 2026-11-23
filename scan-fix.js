@@ -29,7 +29,8 @@ function skuFromGtin(gtin) {
   if (!gtin) return "";
   const g = String(gtin).replace(/\D/g, "");
   const g14 = g.padStart(14, "0").slice(-14);
-  return GTIN_TO_SKU[g14] || GTIN_TO_SKU[g] || "";
+  const learned = (typeof state !== "undefined" && state.settings && state.settings.gtinMap) || {};
+  return GTIN_TO_SKU[g14] || GTIN_TO_SKU[g] || learned[g14] || "";
 }
 function parseUDI(text) {
   const raw = (text || "").trim();
@@ -66,6 +67,7 @@ function fillScanFrom(text) {
   const rawEl = document.getElementById("scan-raw");
   rawEl.textContent = [rawEl.textContent, p.raw].filter(Boolean).join(" | ");
   if (p.gtin && p.sku) GTIN_TO_SKU[p.gtin] = p.sku;
+  if (typeof onScanFilled === "function") onScanFilled(p);
   return p;
 }
 const seenCodes = new Set();
@@ -73,6 +75,8 @@ function onCode(txt) {
   if (!txt || seenCodes.has(txt)) return false;
   seenCodes.add(txt);
   fillScanFrom(txt);
+  // During a stock check the camera stays open and every box is ticked as it is read.
+  if (typeof checkActive === "function" && checkActive()) return false;
   if (scanComplete()) {
     toast("Filled from barcode");
     stopCamera();
@@ -164,6 +168,7 @@ async function readPhotoFile(file) {
       const result = await reader.decodeFromImageUrl(url);
       if (result) {
         fillScanFrom(result.getText());
+        if (typeof checkActive === "function" && checkActive()) { URL.revokeObjectURL(url); return; }
         if (scanComplete()) { toast("Filled from photo"); URL.revokeObjectURL(url); return; }
       }
     }
@@ -182,6 +187,7 @@ async function readPhotoFile(file) {
       const txt = await qr.scanFile(file, true);
       fillScanFrom(txt);
       try { await qr.clear(); } catch (_) {}
+      if (typeof checkActive === "function" && checkActive()) return;
       if (scanComplete()) { toast("Filled from photo"); return; }
     } catch (e) { console.warn(e); }
   }

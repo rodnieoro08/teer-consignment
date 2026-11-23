@@ -3,8 +3,8 @@
   "short_name": "TEER Stock",
   "start_url": "./index.html",
   "display": "standalone",
-  "background_color": "#071422",
-  "theme_color": "#071422",
+  "background_color": "#f3f5f7",
+  "theme_color": "#ffffff",
   "icons": [
     { "src": "./apple-touch-icon.png", "sizes": "180x180", "type": "image/png", "purpose": "any" },
     { "src": "./icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },

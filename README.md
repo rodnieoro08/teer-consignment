@@ -68,7 +68,26 @@ A site with loose clip delivery systems and no steerable guide is flagged **Need
 
 Find can narrow by family, size, expiry, and status, including in transit and quarantine. Sites can show only shelves with stock, lines below par, or a missing guide. The scan screen keeps the last few hospitals as chips.
 
+## Case day, transfers and stock checks
+
+- **Expired stock is not stock.** A unit past its expiry stays on the list but is not counted in the matrix, against a par level, or as something another hospital could lend. The matrix shows it as `+1 exp`, and Home lists expired units to quarantine or return. A unit that expires today still counts.
+- **My sites.** Open a hospital and tap **Pin to Home**. Pinned hospitals sit at the top of Home with what is ready to use per size. Pins are kept on your phone only.
+- **Use first.** Where a shelf has two or more of the same size with different dates, the earliest is marked **Use first**.
+- **Scan knows the box.** If a scanned or typed serial is already on the list, the scan screen shows where it is and offers **Mark used in case**, **Move to** the chosen hospital, or **Mark received**. A barcode that only carries the serial no longer blanks a lot or expiry already on file.
+- **Barcodes the app does not know.** If a barcode does not say which product it is, the scan screen asks you to check the REF. Once you add the unit, this phone remembers that barcode for the next box (Team → Forget learned barcodes to undo).
+- **In transit.** A transfer can be sent as **in transit**. The unit counts as stock nowhere until someone at the other end marks it received, by tapping it or scanning it. Short lines show what is on the way.
+- **Stock check.** Open a hospital → **Stock check**, then scan every box on the shelf. Each one is ticked off. Anything not found is listed as missing, and anything extra can be moved or added on the spot. The result goes into the activity log and can be shared. A check survives closing the app.
+- **Used in cases.** Marking a unit used stamps the date in its notes (`Used 2026-11-23`). Home → **Usage report** lists what was used in the last 7, 30 or 90 days by hospital, to share or export for replacement orders.
+- **Share stock list.** A hospital's shelf, with serials, lots and expiry dates, as text for a message.
+- **Example stock.** The demo units are labelled, are never uploaded, and are removed when you sign in to the shared list.
+
+None of this changes the Firestore fields, so `firestore.rules` does not need republishing.
+
+## Tests
+
+`node --test test/*.test.js` on the Mac. There is no CI.
+
 ## Files
 
-- `index.html` `app.js` `cloud.js` `data.js` `pars.js` `gs1.js` `csv.js` `styles.css` `manifest.json` `sw.js` `icon.svg` `apple-touch-icon.png`
+- `index.html` `app.js` `flows.js` `stock.js` `cloud.js` `data.js` `pars.js` `gs1.js` `csv.js` `styles.css` `manifest.json` `sw.js` `icon.svg` `apple-touch-icon.png`
 - `firestore.rules` — paste into the Firebase console

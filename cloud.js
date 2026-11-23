@@ -305,6 +305,17 @@ async function startLive() {
   if (cloud.live || startingLive) return;
   startingLive = true;
   stopLive();
+  // Example units must never reach the shared list or be mistaken for real stock.
+  if (typeof dropDemo === "function") {
+    const removed = dropDemo();
+    const demoEvents = state.events.filter((event) => /^Demo consignment/.test(String(event.text || ""))).map((event) => event.id);
+    if (demoEvents.length) {
+      state.events = state.events.filter((event) => demoEvents.indexOf(event.id) === -1);
+      ensureSync();
+      state.sync.pendingEventIds = state.sync.pendingEventIds.filter((id) => demoEvents.indexOf(id) === -1);
+    }
+    if (removed || demoEvents.length) saveLocalOnly();
+  }
   cloud.live = true;
   cloud._announcedLocal = false;
   listenCol("units", applyUnitSnapshot);
