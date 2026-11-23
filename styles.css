@@ -113,6 +113,14 @@ textarea { min-height: 72px; font-size: 14px; resize: vertical; }
   padding: 10px 8px;
   text-align: center;
 }
+button.kpi {
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  width: 100%;
+  min-height: 64px;
+}
+button.kpi .tiny { color: var(--red); min-height: 0; }
 .kpi .n { font-size: 22px; font-weight: 800; letter-spacing: -0.03em; }
 .kpi .l { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; margin-top: 2px; }
 .kpi.warn .n { color: var(--amber); }
@@ -125,7 +133,8 @@ textarea { min-height: 72px; font-size: 14px; resize: vertical; }
 .row:last-child { border-bottom: 0; padding-bottom: 0; }
 .row .t { font-size: 14px; font-weight: 650; }
 .row .m { font-size: 12px; color: var(--muted); margin-top: 2px; }
-.row .r { text-align: right; font-size: 12px; color: var(--muted); }
+.row .r { text-align: right; font-size: 12px; color: var(--muted); flex: none; white-space: nowrap; }
+.row .t, .modal h2 { user-select: text; -webkit-user-select: text; }
 .chip {
   display: inline-block; font-size: 10px; font-weight: 700; padding: 2px 7px;
   border-radius: 999px; margin-right: 4px; margin-top: 4px;
@@ -155,12 +164,49 @@ textarea { min-height: 72px; font-size: 14px; resize: vertical; }
 .empty { text-align: center; color: var(--muted); padding: 28px 12px; font-size: 13px; }
 .disclaimer { font-size: 11px; color: var(--muted); line-height: 1.45; margin-top: 8px; }
 .matrix { width: 100%; border-collapse: collapse; font-size: 11px; }
-.matrix th, .matrix td { padding: 7px 4px; text-align: center; border-bottom: 1px solid var(--line); }
-.matrix th:first-child, .matrix td:first-child { text-align: left; }
-.matrix th { color: var(--muted); font-size: 10px; text-transform: uppercase; }
-.zero { color: var(--red); font-weight: 700; }
-.below { color: var(--amber); font-weight: 700; }
-.okn { color: var(--green); font-weight: 700; }
+.matrix th, .matrix td { padding: 2px; text-align: center; border-bottom: 1px solid var(--line); }
+.matrix th:first-child, .matrix td:first-child {
+  position: sticky; left: 0; z-index: 1; text-align: left;
+  background: var(--card); min-width: 108px; padding-left: 2px;
+  box-shadow: 8px 0 8px -8px rgba(0, 0, 0, 0.45);
+}
+.matrix th { color: var(--muted); font-size: 10px; text-transform: uppercase; padding-top: 7px; padding-bottom: 7px; }
+.cell {
+  width: 100%; min-height: 44px; background: transparent; border: 0; color: inherit;
+  font: inherit; font-weight: 700; border-radius: 8px; padding: 6px 2px;
+}
+.cell.zero, .zero { color: var(--red); font-weight: 700; }
+.cell.muted { color: var(--muted); font-weight: 600; }
+.cell.below, .below { color: var(--amber); font-weight: 700; }
+.cell.okn, .okn { color: var(--green); font-weight: 700; }
+.chip-row { display: flex; gap: 6px; flex-wrap: wrap; margin: 8px 0 0; }
+.chip-btn {
+  width: auto; border: 1px solid var(--line); background: var(--bg); color: var(--text);
+  border-radius: 999px; padding: 7px 10px; font-size: 12px; font-weight: 700; min-height: 32px;
+}
+.chip-btn.on { color: var(--teal); border-color: var(--teal); background: var(--teal-dim); }
+.flag-btn {
+  display: block; width: 100%; text-align: left; background: transparent; border: 0;
+  border-bottom: 1px solid var(--line); color: #d7e6f2; font: inherit; font-size: 13px;
+  padding: 10px 0; min-height: 44px;
+}
+.flag-btn:last-child { border-bottom: 0; }
+.flag-btn.on { color: var(--teal); }
+.find-head {
+  width: 100%; display: flex; justify-content: space-between; gap: 8px; align-items: baseline;
+  background: transparent; border: 0; color: inherit; font: inherit; padding: 0 0 4px; text-align: left;
+}
+.find-head span:first-child { font-weight: 750; font-size: 14px; }
+.find-more { margin-top: 8px; }
+.find-more summary { cursor: pointer; color: var(--teal); font-size: 13px; font-weight: 700; }
+.find-clear-wrap { justify-content: flex-end; }
+.find-clear-wrap .secondary { margin-top: 0; }
+.exp-bad { color: var(--red); font-weight: 700; }
+.exp-warn { color: var(--amber); font-weight: 700; }
+button.kpi:focus-visible, .chip-btn:focus-visible, .cell:focus-visible, .flag-btn:focus-visible, .find-head:focus-visible {
+  outline: 2px solid var(--teal); outline-offset: 2px;
+}
+button.kpi:active, .cell:active, .flag-btn:active { background: var(--teal-dim); }
 .matrix-family { margin: 12px 0 6px; font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--teal); }
 .matrix-scroll { overflow: auto; }
 .par-block { border-top: 1px solid var(--line); margin-top: 8px; padding-top: 8px; }

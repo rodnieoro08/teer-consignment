@@ -10,10 +10,6 @@
   <link rel="manifest" href="./manifest.json" />
   <link rel="stylesheet" href="./styles.css" />
   <link rel="apple-touch-icon" href="./apple-touch-icon.png" />
-  <style>
-    .flag-line { font-size: 13px; padding: 8px 0; border-bottom: 1px solid var(--line); color: #d7e6f2; }
-    .flag-line:last-child { border-bottom: 0; }
-  </style>
 </head>
 <body>
   <header class="app-header">
@@ -32,26 +28,33 @@
 
   <main class="wrap">
     <section id="screen-home" class="screen active">
-      <div class="grid-4">
-        <div class="kpi ok"><div class="n" id="k-units">0</div><div class="l">In stock</div></div>
-        <div class="kpi"><div class="n" id="k-sites">0</div><div class="l">Hospitals</div></div>
-        <div class="kpi warn"><div class="n" id="k-exp">0</div><div class="l"><90d</div></div>
-        <div class="kpi bad"><div class="n" id="k-hot">0</div><div class="l"><30d</div></div>
+      <div class="grid-4" id="home-kpis">
+        <button class="kpi ok" type="button" data-kpi="stock"><div class="n" id="k-units">0</div><div class="l">In stock</div></button>
+        <button class="kpi" type="button" data-kpi="sites"><div class="n" id="k-sites">0</div><div class="l">Sites</div></button>
+        <button class="kpi warn" type="button" data-kpi="exp90"><div class="n" id="k-exp">0</div><div class="l">≤90 days</div></button>
+        <button class="kpi bad" type="button" data-kpi="exp30"><div class="n" id="k-hot">0</div><div class="l">≤30 days</div><div class="tiny" id="k-expired"></div></button>
       </div>
       <div class="card" style="margin-top:12px">
         <h2>Need a clip fast</h2>
-        <p class="hint">Search every hospital from one box. After the team signs in, this is the live national list.</p>
-        <button class="primary" type="button" onclick="document.getElementById('find-q').value='XTW';showScreen('find');renderFind()">Find XTW across the UK</button>
+        <p class="hint">Every hospital, in stock only. After the team signs in, this is the live national list.</p>
+        <div class="chip-row" id="quick-sizes">
+          <button class="chip-btn" type="button" data-quick-size="XTW">XTW</button>
+          <button class="chip-btn" type="button" data-quick-size="NTW">NTW</button>
+          <button class="chip-btn" type="button" data-quick-size="XT">XT</button>
+          <button class="chip-btn" type="button" data-quick-size="NT">NT</button>
+          <button class="chip-btn" type="button" data-quick-size="SGC">Guide</button>
+        </div>
         <button class="secondary" type="button" onclick="showScreen('scan')">Scan a box</button>
       </div>
       <div class="card">
         <h2>National clip matrix</h2>
-        <p class="hint">In-stock units only. MitraClip and TriClip, and G4 and G5, are separate. A red zero is an empty shelf. Amber is below the par you set.</p>
+        <p class="hint">In-stock units only. Tap a number to see the units, or who else has that size. Red means a size you stock is at zero. Amber is below par. A grey zero is a size that site does not carry.</p>
+        <div class="chip-row" id="matrix-families"></div>
         <div id="matrix"></div>
       </div>
       <div class="card">
         <h2>Reorder & expiry</h2>
-        <p class="hint">Set par levels on a hospital. This list is what to send back when a site is short.</p>
+        <p class="hint">Short lines name who else has that size. A clip with no steerable guide is listed on its own. A bundle includes its own guide and does not cover a loose clip.</p>
         <div id="alerts"></div>
         <button class="secondary" id="btn-reorder-csv" type="button">Export reorder list</button>
         <button class="secondary" id="btn-reorder-share" type="button">Share reorder list</button>
@@ -66,8 +69,11 @@
     <section id="screen-find" class="screen">
       <div class="card">
         <h2>Find stock</h2>
-        <p class="hint">Type XTW, SGC, a hospital, or a serial. This is the screen to use on the way to a case.</p>
-        <div class="field"><label>Search</label><input id="find-q" placeholder="XTW / Barts / serial"></div>
+        <p class="hint">Type XTW, TriClip, a hospital, or a serial. Results are grouped by hospital.</p>
+        <div class="field"><label>Search</label><input id="find-q" placeholder="XTW / Barts / serial" enterkeyhint="search"></div>
+        <p class="tiny" id="find-summary"></p>
+        <details class="find-more" id="find-more">
+          <summary>Filters</summary>
         <div class="grid-2" style="margin-top:8px">
           <div class="field">
             <label>Size</label>
@@ -77,16 +83,48 @@
             </select>
           </div>
           <div class="field">
+            <label>Family</label>
+            <select id="find-family"><option value="">Any</option></select>
+          </div>
+        </div>
+        <div class="grid-2" style="margin-top:8px">
+          <div class="field">
+            <label>Expiry</label>
+            <select id="find-expiry">
+              <option value="">Any</option>
+              <option value="expired">Expired</option>
+              <option value="30">Within 30 days</option>
+              <option value="90">Within 90 days</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>Sort</label>
+            <select id="find-sort">
+              <option value="hospital">Hospital</option>
+              <option value="expiry">Soonest expiry</option>
+              <option value="serial">Serial</option>
+            </select>
+          </div>
+        </div>
+        <div class="grid-2" style="margin-top:8px">
+          <div class="field">
             <label>Status</label>
             <select id="find-status">
               <option value="in-stock">In stock</option>
               <option value="">All</option>
               <option value="used">Used</option>
+              <option value="in-transit">In transit</option>
+              <option value="quarantine">Quarantine</option>
             </select>
           </div>
+          <div class="field find-clear-wrap">
+            <label>&nbsp;</label>
+            <button class="secondary" id="find-clear" type="button">Clear filters</button>
+          </div>
         </div>
+        </details>
       </div>
-      <div class="card" id="find-results"></div>
+      <div id="find-results"></div>
     </section>
 
     <section id="screen-scan" class="screen">
@@ -105,7 +143,7 @@
         <div class="grid-2">
           <div class="field span2"><label>SKU / REF</label><select id="scan-sku"></select></div>
           <div class="field span2"><label>Lot</label><input id="scan-lot" placeholder="LOT / (10)"></div>
-          <div class="field span2"><label>Hospital</label><select id="scan-hosp"></select></div>
+          <div class="field span2"><label>Hospital</label><div class="chip-row" id="recent-hosp"></div><select id="scan-hosp"></select></div>
           <div class="field span2"><label>Serial</label><input id="scan-sn" placeholder="SN / (91)"></div>
           <div class="field span2"><label>Expiry</label><input id="scan-exp" type="date"></div>
           <div class="field span2"><label>Paste UDI string</label><input id="scan-raw-in" placeholder="only if scan fails"></div>
@@ -118,7 +156,16 @@
     <section id="screen-hospitals" class="screen">
       <div class="card">
         <h2>Hospitals</h2>
-        <div class="field"><label>Filter</label><input id="hosp-q" placeholder="Barts / Leeds / Wales"></div>
+        <div class="chip-row" id="hosp-filters">
+          <button class="chip-btn on" type="button" data-hosp-filter="all">All</button>
+          <button class="chip-btn" type="button" data-hosp-filter="stock">With stock</button>
+          <button class="chip-btn" type="button" data-hosp-filter="short">Below par</button>
+          <button class="chip-btn" type="button" data-hosp-filter="guide">Needs a guide</button>
+        </div>
+        <div class="grid-2">
+          <div class="field"><label>Filter</label><input id="hosp-q" placeholder="Barts / Leeds / Wales"></div>
+          <div class="field"><label>Region</label><select id="hosp-region"><option value="">All regions</option></select></div>
+        </div>
         <div class="grid-2" style="margin-top:10px">
           <div class="field"><label>Add hospital</label><input id="new-hosp" placeholder="Name"></div>
           <div class="field"><label>City</label><input id="new-city" placeholder="City"></div>

@@ -58,6 +58,16 @@ The board keeps MitraClip G3, G4 and G5, and TriClip G4 and G5, in separate matr
 
 TriClip catalogue numbers are the EU MDR codes published by Abbott. Verified GTINs are mapped in `scan-fix.js`. TriClip G5 EU GTINs were not in the public sources used here, so those barcodes are not mapped.
 
+## On the way to a case
+
+The home counts open Find already filtered: everything in stock, what expires inside 90 or 30 days (soonest first), or the sites that currently hold stock. Size chips (XTW, NTW, and the rest) do the same for one size.
+
+Tap a matrix number to see those units. A red zero, or any cell under par, lists who else has that size. Spare means the other hospital stays at or above its own par after one unit leaves.
+
+A site with loose clip delivery systems and no steerable guide is flagged **Needs a guide**. A bundle includes its own guide, so it does not cover a loose clip. The reorder export and share text include both the short lines and these missing guides.
+
+Find can narrow by family, size, expiry, and status, including in transit and quarantine. Sites can show only shelves with stock, lines below par, or a missing guide. The scan screen keeps the last few hospitals as chips.
+
 ## Files
 
 - `index.html` `app.js` `cloud.js` `data.js` `pars.js` `gs1.js` `csv.js` `styles.css` `manifest.json` `sw.js` `icon.svg` `apple-touch-icon.png`

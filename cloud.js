@@ -639,8 +639,9 @@ function setLiveUi() {
   const cfg = loadFbConfig();
   if (pill) {
     if (cloud.live && cloud.user) {
-      pill.textContent = "Live";
-      pill.className = "pill";
+      const waiting = typeof pendingSyncCount === "function" ? pendingSyncCount() : 0;
+      pill.textContent = waiting ? "Live · " + waiting + " to sync" : "Live";
+      pill.className = waiting ? "pill warn" : "pill";
     } else if (cloud.user && !cloud.isMember) {
       pill.textContent = "Not on team list";
       pill.className = "pill bad";
